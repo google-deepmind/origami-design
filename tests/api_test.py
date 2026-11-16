@@ -464,6 +464,55 @@ class ApiTest(parameterized.TestCase):
       with self.assertRaises(ValueError):
         shaped.flat_fold()
 
+  def test_shaping_toolbox_and_pose_public_api(self):
+    tools = bp.list_shaping_tools()
+    self.assertLen(tools, 28)
+    self.assertIn('simple_fold', tools)
+    self.assertIn('clip_pattern_fold', tools)
+    self.assertIn('squash_fold', tools)
+    self.assertIn('open_flap', tools)
+    self.assertIn('bend_to_direction', tools)
+
+    res = bp.fold('human', preset='demo')
+    posed, pose_report = bp.pose(
+        res.solved, search=False, return_report=True
+    )
+    self.assertIsInstance(posed, bp.ShapedCreasePattern)
+    self.assertTrue(posed.creases.local_flat_foldability())
+    self.assertIn('fidelity', pose_report)
+
+    state = bp.ShapingState.from_solved(res.solved)
+    probe_out = bp.probe_shaping(state, ['left_leg'])
+    self.assertIn('left_leg', probe_out)
+    self.assertEmpty(state.history)
+
+    next_state, results = bp.apply_shaping_tools(
+        state,
+        [
+            {
+                'name': 'simple_fold',
+                'arguments': {
+                    'element_name': 'left_leg',
+                    'angle': 45.0,
+                    'depth': 0.0,
+                },
+            },
+            {
+                'name': 'simple_fold',
+                'arguments': {
+                    'element_name': 'right_leg',
+                    'angle': -45.0,
+                    'depth': 0.0,
+                },
+            },
+        ],
+    )
+    self.assertLen(results, 2)
+    self.assertTrue(all(r.ok for r in results))
+    shaped = next_state.to_shaped(res.solved)
+    fidelity = bp.evaluate_fidelity(shaped)
+    self.assertTrue(fidelity['clean_gate']['locally_flat_foldable'])
+
 
 if __name__ == '__main__':
   absltest.main()

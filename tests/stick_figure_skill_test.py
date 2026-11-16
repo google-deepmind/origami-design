@@ -49,6 +49,7 @@ class StickFigureSkillTest(parameterized.TestCase):
       ('stick-figure-generation', 'stick-figure-generation', True),
       ('origami-shaping', 'origami-shaping', True),
       ('origami-solving-pipeline', 'origami-solving-pipeline', True),
+      ('origami-critique', 'origami-critique', True),
   )
   def test_llm_skills_frontmatter_and_python_snippets(
       self,
@@ -341,6 +342,104 @@ class StickFigureSkillTest(parameterized.TestCase):
       self.assertEqual(auto_red_labels, expected_hubs)
     finally:
       plt.close(fig_auto)
+
+  def test_origami_designer_agent_spec_and_references(self):
+    agent_path = _REPO_ROOT / '.agents' / 'agents' / 'origami-designer.md'
+    self.assertTrue(agent_path.exists(), f'Missing agent file: {agent_path}')
+    agent_text = agent_path.read_text(encoding='utf-8')
+    self.assertTrue(agent_text.startswith('---\n'))
+    self.assertIn('name: origami-designer', agent_text)
+    self.assertIn('description:', agent_text)
+    for skill_ref in (
+        'stick-figure-design',
+        'stick-figure-generation',
+        'origami-solving-pipeline',
+        'origami-shaping',
+        'origami-critique',
+    ):
+      self.assertIn(skill_ref, agent_text)
+      self.assertTrue((_SKILLS_DIR / skill_ref / 'SKILL.md').exists())
+
+    refs_dir = _SKILLS_DIR / 'origami-shaping' / 'references'
+    tools_md = (refs_dir / 'tools.md').read_text(encoding='utf-8')
+    pose_md = (refs_dir / 'pose.md').read_text(encoding='utf-8')
+    for tool_name in bp.list_shaping_tools():
+      self.assertIn(tool_name, tools_md)
+    for doc_text in (agent_text, tools_md, pose_md):
+      for attr in set(
+          re.findall(r'\bbp\.([A-Za-z_][A-Za-z0-9_]*)\b', doc_text)
+      ):
+        self.assertTrue(hasattr(bp, attr), f'Missing bp.{attr}')
+
+  def test_cli_shaping_subcommands_end_to_end(self):
+    with tempfile.TemporaryDirectory() as tmp_dir_str:
+      run_dir = pathlib.Path(tmp_dir_str) / 'human_run'
+      with contextlib.redirect_stdout(io.StringIO()):
+        cli_lib.main(['human', '-o', str(run_dir), '--no-shape', '--no-viz'])
+      self.assertTrue((run_dir / 'solved_bus.json').exists())
+
+      buf_tools = io.StringIO()
+      with contextlib.redirect_stdout(buf_tools):
+        cli_lib.main(['tools', str(run_dir)])
+      ctx = json.loads(buf_tools.getvalue())
+      self.assertEqual(ctx['tools'], list(bp.list_shaping_tools()))
+      self.assertTrue((run_dir / 'shaping_context.json').exists())
+
+      buf_probe = io.StringIO()
+      with contextlib.redirect_stdout(buf_probe):
+        cli_lib.main(['probe', str(run_dir), '--elements', 'left_leg'])
+      probe_rep = json.loads(buf_probe.getvalue())
+      self.assertIn('left_leg', probe_rep)
+      self.assertTrue((run_dir / 'probe_report.json').exists())
+
+      buf_pose = io.StringIO()
+      with contextlib.redirect_stdout(buf_pose):
+        cli_lib.main(['pose', str(run_dir), '--no-search', '--no-viz'])
+      pose_rep = json.loads(buf_pose.getvalue())
+      self.assertIn('fidelity', pose_rep)
+      self.assertTrue((run_dir / 'pose_report.json').exists())
+      self.assertTrue((run_dir / 'shaping_state.json').exists())
+
+      calls = json.dumps([
+          {
+              'name': 'simple_fold',
+              'arguments': {
+                  'element_name': 'left_leg',
+                  'angle': 45.0,
+                  'depth': 0.0,
+              },
+          },
+          {
+              'name': 'simple_fold',
+              'arguments': {
+                  'element_name': 'right_leg',
+                  'angle': -45.0,
+                  'depth': 0.0,
+              },
+          },
+      ])
+      buf_act = io.StringIO()
+      with contextlib.redirect_stdout(buf_act):
+        cli_lib.main([
+            'actuate',
+            str(run_dir),
+            '--reset',
+            '--no-viz',
+            '--calls',
+            calls,
+        ])
+      act_out = json.loads(buf_act.getvalue())
+      self.assertLen(act_out, 2)
+      self.assertTrue(all(item['ok'] for item in act_out))
+      self.assertTrue((run_dir / 'shaped_cp.svg').exists())
+      self.assertTrue((run_dir / 'shaping_history.jsonl').exists())
+
+      buf_score = io.StringIO()
+      with contextlib.redirect_stdout(buf_score):
+        cli_lib.main(['score', str(run_dir)])
+      score_out = json.loads(buf_score.getvalue())
+      self.assertTrue(score_out['clean_gate']['locally_flat_foldable'])
+      self.assertTrue((run_dir / 'fidelity_report.json').exists())
 
 
 if __name__ == '__main__':

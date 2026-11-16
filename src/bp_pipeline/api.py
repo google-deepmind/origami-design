@@ -35,7 +35,10 @@ from .crease_pattern import crease as crease_lib
 from .crease_pattern import crease_pattern as cp_lib
 from .packing import config as packing_config_lib
 from .packing import stacking as stacking_lib
+from .shaping import fidelity as fidelity_lib
 from .shaping import heuristics_3d
+from .shaping import recipes as recipes_lib
+from .shaping import toolbox as toolbox_lib
 from .solving import hinges as hinge_utils
 from .stick_figures import stick as stick_lib
 from .stick_figures import stick_figure as stick_figure_lib
@@ -88,7 +91,16 @@ render_stick_figure_svg = viz.render_stick_figure_svg
 render_packed_overlay_svg = viz.render_packed_overlay_svg
 stage_display_name = viz.stage_display_name
 FoldedMesh3D = render_3d.FoldedMesh3D
+FoldedModel = fidelity_lib.FoldedModel
+ShapingState = toolbox_lib.ShapingState
+ShapingToolConfig = toolbox_lib.ToolConfig
+ToolResult = toolbox_lib.ToolResult
+apply_shaping_tool = toolbox_lib.apply_tool
+apply_shaping_tools = toolbox_lib.apply_tools
 build_folded_mesh_3d = render_3d.build_folded_mesh_3d
+evaluate_fidelity = fidelity_lib.evaluate_fidelity
+list_shaping_tools = toolbox_lib.list_shaping_tools
+probe_shaping = toolbox_lib.probe
 mesh_to_fold_dict = render_3d.mesh_to_fold_dict
 save_3d_turnaround = render_3d.save_3d_turnaround
 save_stick_figure_views = render_summary.save_stick_figure_views
@@ -1104,6 +1116,44 @@ def _shape_candidates(
   return shaped_list
 
 
+def pose(
+    solved: bus.SolvedCreasePattern,
+    *,
+    search: bool = True,
+    figure: bool = True,
+    narrow: bool = False,
+    time_budget_s: float = 120.0,
+    return_report: bool = False,
+) -> bus.ShapedCreasePattern | tuple[bus.ShapedCreasePattern, dict[str, Any]]:
+  """Poses a flat-foldable `SolvedCreasePattern` using the actuator pose recipe.
+
+  Args:
+    solved: Flat-foldable solved base crease pattern.
+    search: Whether to run group-based coordinate search if `figure_pose` does
+      not pass `pose_gate`.
+    figure: Whether to pose elements at their stick-figure angles via
+      closed-loop `figure_pose`.
+    narrow: With `figure=True`, whether to narrow thin limbs on the base first.
+    time_budget_s: Wall-time budget in seconds for search mode.
+    return_report: If True, returns `(shaped, pose_report)`; otherwise returns
+      `shaped`.
+
+  Returns:
+    `ShapedCreasePattern` (or `(ShapedCreasePattern, dict)` when
+    `return_report=True`).
+  """
+  shaped, report = recipes_lib.pose_solved(
+      solved,
+      search=search,
+      figure=figure,
+      narrow=narrow,
+      time_budget_s=time_budget_s,
+  )
+  if return_report:
+    return shaped, report
+  return shaped
+
+
 __all__ = (
     'BpsImportResult',
     'Crease',
@@ -1114,6 +1164,7 @@ __all__ = (
     'Fold',
     'FoldStrategy3D',
     'FoldedMesh3D',
+    'FoldedModel',
     'PRODUCTION_SWEEP',
     'PackedCreasePattern',
     'PackerOptions',
@@ -1125,8 +1176,10 @@ __all__ = (
     'Preset',
     'ShapedCreasePattern',
     'ShapingFailedError',
+    'ShapingState',
     'ShapingStrategy',
     'ShapingTaskConfig',
+    'ShapingToolConfig',
     'SolvedCreasePattern',
     'SolverConfig',
     'SolvingFailedError',
@@ -1136,8 +1189,12 @@ __all__ = (
     'SolveStage',
     'Stick',
     'StickFigure',
+    'ToolResult',
+    'apply_shaping_tool',
+    'apply_shaping_tools',
     'build_folded_mesh_3d',
     'dumps',
+    'evaluate_fidelity',
     'fold',
     'from_bp_studio',
     'from_dict',
@@ -1146,11 +1203,14 @@ __all__ = (
     'list_examples',
     'load_example',
     'list_packers',
+    'list_shaping_tools',
     'list_solvers',
     'loads',
     'mesh_to_fold_dict',
     'pack',
+    'pose',
     'prepare',
+    'probe_shaping',
     'register_packer',
     'register_solver',
     'render_packed_overlay_svg',

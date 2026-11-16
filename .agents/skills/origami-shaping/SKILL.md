@@ -1,6 +1,6 @@
 ---
 name: origami-shaping
-description: Shapes a solved box-pleated origami base into an expressive 3D model. Covers stick-figure joint subdivision (preserving merged packing lengths), 3D geometric simple-fold and river-bend crease-pattern shaping (`bp.shape`), and iterative visual feedback loops. Use when refining a flat-foldable base crease pattern or unmerged StickFigure into a finished 3D origami model.
+description: Shapes a solved box-pleated origami base into an expressive 3D model. Covers stick-figure joint subdivision, automated 3D geometric shaping (`bp.shape`), deterministic pose recipes (`bp.pose`), the 28-tool stateful shaping actuator toolbox (`bp.ShapingState`, `bp.apply_shaping_tools`), and objective 3D fidelity scoring (`bp.evaluate_fidelity`).
 ---
 
 # Origami Shaping for Box-Pleated Models
@@ -279,3 +279,95 @@ In the origami SVG format used by `bp_pipeline`:
         with narrow central features.
     -   *Fix*: Solve with `remove_central_crease=True` and
         `disallow_trapping_edge_flaps=True` before shaping.
+
+--------------------------------------------------------------------------------
+
+## 6. Stage C: Stateful Actuator Toolbox & Pose Recipes (`bp.pose`, `bp.ShapingState`)
+
+When `bp.shape(solved)` discards colliding limbs or when you want thin narrowed
+legs, fanned wings/tails, bilateral wedge squashes, concentric carapace relief,
+or fine-grained joint articulation, drive the **stateful shaping toolbox**
+(`bp_pipeline.shaping.toolbox`) and **pose recipes** (`bp.pose`):
+
+```python
+import bp_pipeline as bp
+
+# 1. Start from the deterministic pose recipe (or directly from `solved`):
+posed, pose_report = bp.pose(solved, search=False, return_report=True)
+fidelity_report = bp.evaluate_fidelity(posed)
+
+# 2. Inspect available actuators and refine step by step with `ShapingState`:
+available_tools = bp.list_shaping_tools()
+state = bp.ShapingState.from_solved(solved)
+probe_outcomes = bp.probe_shaping(state, ['left_leg'])
+state, results = bp.apply_shaping_tools(
+    state,
+    [
+        {
+            'name': 'simple_fold',
+            'arguments': {
+                'element_name': 'left_leg',
+                'angle': 45.0,
+                'depth': 0.0,
+                'narrow': True,
+            },
+        },
+        {
+            'name': 'simple_fold',
+            'arguments': {
+                'element_name': 'right_leg',
+                'angle': -45.0,
+                'depth': 0.0,
+                'narrow': True,
+            },
+        },
+    ],
+)
+custom_shaped = state.to_shaped(solved)
+custom_fidelity = bp.evaluate_fidelity(custom_shaped)
+```
+
+### CLI Subcommands (`bp-pipeline tools | probe | pose | actuate | score`)
+
+You can run iterative shaping directly from the terminal against an output
+directory created by `bp-pipeline <design.json> -o <run_dir> --no-shape`:
+
+```bash
+# 1. Inspect the BFS element table, flap orientations, and 28 tool names:
+bp-pipeline tools <run_dir>
+
+# 2. Apply the deterministic pose recipe and render shaped_3d_views.png:
+bp-pipeline pose <run_dir>
+
+# 3. Probe which basic folds and 1/n narrowings succeed on target elements:
+bp-pipeline probe <run_dir> --elements left_leg,right_leg
+
+# 4. Apply a batch of actuator calls (pass --reset to start from solved base):
+bp-pipeline actuate <run_dir> --calls calls.json
+
+# 5. Evaluate objective 0-10 3D fidelity, pose_gate, and clean_gate:
+bp-pipeline score <run_dir>
+```
+
+### Key Composition Rules for Multi-Tool Shaping
+
+1.  **Straight Narrowing Before `rotation_3d`**:
+    -   `clip_pattern_fold(element_name=..., template_name='fold', enable_narrow=True, narrow_n_times=2)`
+        halves a flap or river straight without a zig-zag bend (`narrow_n_times=3`
+        narrows to $1/3$ width). Call it on the unshaped base for 1–3 thin limb
+        pairs per round **before** `rotation_3d`.
+2.  **Bilateral Squash Opening (`squash_fold`)**:
+    -   `squash_fold(element_name=..., open_percent=0.45)` opens symmetric
+        3D kites across both mirror ridges of a flap (heads, jaws, hoods, thighs,
+        palms). Apply flat squashes (`open_percent=1.0`) before `rotation_3d` or
+        3D squashes (`open_percent=0.35..0.60`) on flaps with plain pleats.
+3.  **Automatic 3D Overlay Replay (`flat_backbone`)**:
+    -   `ShapingState` tracks a 100%-Kawasaki 2D `flat_backbone` alongside 3D
+        partial-angle overlays (`open_flap`, `inscribed_flap`, `fold_spine_3d`),
+        replaying 3D relief creases automatically after subsequent 2D folds and
+        verifying `vertex_error <= 1.0%` in the deterministic 3D folder.
+4.  **Detailed Reference Manuals**:
+    -   Full 28-tool parameter table, preconditions, and recipes:
+        [references/tools.md](references/tools.md)
+    -   Objective 3D fidelity components and pose-search architecture:
+        [references/pose.md](references/pose.md)

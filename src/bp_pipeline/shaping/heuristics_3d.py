@@ -20,18 +20,25 @@ import enum
 import functools
 import logging
 import math
-from typing import Sequence, Union
+from collections.abc import Collection, Mapping, Sequence
+from typing import Union
 
 import numpy as np
 
 from ..crease_pattern import crease as crease_utils
+from ..crease_pattern import crease_pattern as crease_pattern_lib
+from ..packing import packing_output
+from ..solving import hinges as hinge_utils
 from ..stick_figures import angle_utils
 from ..stick_figures import stick as stick_lib
 from ..stick_figures import stick_figure as stick_figure_lib
 from ..stick_figures import traversal as tr
 from . import heuristics
+from . import heuristics_3d_utils
 from . import heuristics_utils
+from . import shaping_elements
 from . import shaping_utils
+from . import zigzag_shaping
 
 # The maximum slope of the simple fold direction allowed when shaping.
 # NOTE: This will only be used in geometric_simple_fold_3d_heuristics.py and
@@ -507,6 +514,8 @@ def get_flap_post_dict(
     default_strategy: FoldStrategy3D = FoldStrategy3D.DEFAULT,
     flap_strategies: dict[str, FoldStrategy3D] | None = None,
     max_slope_thresh: float = MAX_SLOPE,
+    unrotated: Collection[str] = (),
+    base_signs: Mapping[str, float] | None = None,
 ) -> dict[str, Sequence[SimpleFoldInfo]]:
   """Generates a dictionary of SimpleFoldInfo for each stick in the stick figure.
 
@@ -528,6 +537,18 @@ def get_flap_post_dict(
     flap_strategies: A dictionary mapping flap names to their specific shaping
       strategy. If not provided, the default strategy will be used.
     max_slope_thresh: The maximum slope threshold for the flap.
+    unrotated: Sticks that receive no shaping creases (not shaped in this call,
+      or left out). They keep their initial posture, and their children start
+      from it. Without this, a child was rotated relative to where its parent
+      would have been had the parent been folded to its stick-figure angles
+      (e.g. Pegasus wings on the unshaped `withers` river: off by the river's 12
+      degree pitch relative to `back`).
+    base_signs: Measured direction of sticks in the flat folded base: +1 along
+      the root stick (start->end), -1 against it. A stick listed here starts
+      from that base posture (turned by its parents' shaping rotations) instead
+      of the posture inferred from hinge fold states, which disagreed with the
+      folded base for 3 of the 6 Pegasus wings (they point backward on the base
+      but were rotated as if they pointed forward: 110-150 degrees off).
 
   Returns:
     A dictionary mapping stick names to their corresponding SimpleFoldInfo.
@@ -536,27 +557,31 @@ def get_flap_post_dict(
   first_stick_name = heuristics.get_first_stick_for_shaping(stickfigure).name
   # Initialize the first root flap posture matrix
   flap_posture_dict = {
-      first_stick_name: [
-          SimpleFoldInfo(
-              posture_matrix_before_shaping=PostureMatrix(
-                  y=np.array([0, 1, 0]), z=np.array([0, 0, 1])
-              ),
-              posture_matrix_after_shaping=PostureMatrix(
-                  y=np.array([0, 1, 0]), z=np.array([0, 0, 1])
-              ),
-              rotation_axis=np.zeros(3),
-              rotation_axis_local=np.zeros(3),
-              rotation_angle=0.0,
-              required_flip=False,
-          )
-      ]
+      first_stick_name: [SimpleFoldInfo(
+          posture_matrix_before_shaping=PostureMatrix(
+              y=np.array([0, 1, 0]), z=np.array([0, 0, 1])
+          ),
+          posture_matrix_after_shaping=PostureMatrix(
+              y=np.array([0, 1, 0]), z=np.array([0, 0, 1])
+          ),
+          rotation_axis=np.zeros(3),
+          rotation_axis_local=np.zeros(3),
+          rotation_angle=0.0,
+          required_flip=False,
+      )]
+  }
+  # Postures on the flat base (before any shaping), in the same frame.
+  base_postures = {
+      first_stick_name: PostureMatrix(
+          y=np.array([0, 1, 0]), z=np.array([0, 0, 1])
+      )
   }
   for stick in tr.breadth_first_traversal(
       stickfigure, start_stick_name=first_stick_name
   ):
-    parent_posture_matrix_after_shaping = flap_posture_dict[stick.name][
-        -1
-    ].posture_matrix_after_shaping
+    parent_posture_matrix_after_shaping = flap_posture_dict[
+        stick.name
+    ][-1].posture_matrix_after_shaping
     for joint_name in (stick.start, stick.end):
       joint = stickfigure.joints.get(joint_name)
       if not joint:
@@ -572,7 +597,7 @@ def get_flap_post_dict(
             joint.name
         )
         direction_vec_global = (
-            unnormalized_direction_vec_global  # pyrefly: ignore[unsupported-operation]
+            unnormalized_direction_vec_global
             / np.linalg.norm(unnormalized_direction_vec_global)
         )
 
@@ -597,6 +622,49 @@ def get_flap_post_dict(
               parent_pose_matrix=parent_posture_matrix_after_shaping,
               make_post_hinge_top=make_post_hinge_top,
           )
+
+        # The parent's rotation by shaping, applied to the child's posture on
+        # the flat base (the child rides on its parent).
+        parent_rotation = (
+            parent_posture_matrix_after_shaping.value
+            @ base_postures[stick.name].value.T
+        )
+        sign = (base_signs or {}).get(neighbor_stick.name)
+        if sign is not None:
+          base_posture = PostureMatrix(
+              y=np.array([0.0, float(np.sign(sign)), 0.0]),
+              z=np.array([0.0, 0.0, 1.0]),
+          )
+          measured = PostureMatrix.from_matrix(
+              parent_rotation @ base_posture.value
+          )
+          if not np.allclose(measured.y, init_post_matrix_global.y, atol=1e-6):
+            logging.warning(
+                'Base direction of %s measured %s the root; the hinge-based'
+                ' fold state %s said otherwise. Using the measurement.',
+                neighbor_stick.name,
+                'along' if sign > 0 else 'against',
+                flap_info[neighbor_stick.name].fold_state,
+            )
+          init_post_matrix_global = measured
+        else:
+          base_posture = PostureMatrix.from_matrix(
+              parent_rotation.T @ init_post_matrix_global.value
+          )
+        base_postures[neighbor_stick.name] = base_posture
+
+        if neighbor_stick.name in unrotated:
+          flap_posture_dict[neighbor_stick.name] = [
+              SimpleFoldInfo(
+                  posture_matrix_before_shaping=init_post_matrix_global,
+                  posture_matrix_after_shaping=init_post_matrix_global,
+                  rotation_axis=np.zeros(3),
+                  rotation_axis_local=np.zeros(3),
+                  rotation_angle=0.0,
+                  required_flip=False,
+              )
+          ]
+          continue
 
         # If the dot product is positive, we have an acute zigzag rotation,
         # Here we assume we will apply a 180 degree flip to the flap.
@@ -655,9 +723,9 @@ def get_flap_post_dict(
               )
             else:
               simple_fold_infos.append(new_simple_fold_info)
-            init_post_matrix_global = simple_fold_infos[
-                -1
-            ].posture_matrix_after_shaping
+            init_post_matrix_global = (
+                simple_fold_infos[-1].posture_matrix_after_shaping
+            )
             # Get depth of simple fold on paper.
             depth = simple_fold_infos[-1].rotation_axis_depth
             if depth is None or abs(depth) > max_slope_thresh:
@@ -734,4 +802,157 @@ def get_flap_post_dict(
           )
           flap_posture_dict[neighbor_stick.name] = simple_fold_infos
 
-  return flap_posture_dict  # pyrefly: ignore[bad-return]
+  return flap_posture_dict
+
+
+def get_3d_heuristic_params(
+    sf: stick_figure_lib.StickFigure,
+    packing: packing_output.PackingOutput,
+    ff_solution: hinge_utils.SolverResult,
+    shaping_rectangles: list[shaping_utils.Rectangle],
+    shaping_rivers: list[shaping_elements.ShapingRiver],
+    grid_size: int,
+    root_direction_follow_stick_figure_root: bool,
+) -> tuple[zigzag_shaping.ZigzagShapingParamsForElement, ...]:
+  """Calculates the 3D heuristic parameters for the given stick figure.
+
+  Args:
+    sf: The stick figure.
+    packing: The packing output.
+    ff_solution: The FF solution.
+    shaping_rectangles: The list of shaping rectangles.
+    shaping_rivers: The list of shaping rivers.
+    grid_size: The size of the grid.
+    root_direction_follow_stick_figure_root: Whether to follow the stick figure
+      root direction.
+
+  Returns:
+    A list of shaping parameters, for now we support Zigzag shapings only.
+  """
+  flap_info = heuristics.get_flap_info_dict(
+      sf,
+      packing,
+      ff_solution,
+      root_direction_follow_stick_figure_root=root_direction_follow_stick_figure_root,
+  )
+
+  # Get the flap posture dictionary.
+  flap_post_dict = {
+      k: v[0] for k, v in get_flap_post_dict(sf, flap_info).items()
+  }
+
+  # Get the first stick for shaping.
+  # first_stick = heuristics.get_first_stick_for_shaping(sf)
+
+  # Use root for now.
+  # NOTE: Explore use non-root for shaping.
+  first_stick = sf[sf.root]
+
+  shaping_rectangle_dict = {r.name: r for r in shaping_rectangles}
+  shaping_river_dict = {r.name: r for r in shaping_rivers}
+
+  # NOTE: Add support for non-river root case shaping.
+  if first_stick.is_river:
+    shaping_root = shaping_river_dict[first_stick.name]
+  else:
+    shaping_root = shaping_rectangle_dict[first_stick.name]
+    shaping_rectangle_dict.pop(first_stick.name)
+
+  stick_side_dict = heuristics_3d_utils.get_stick_side_dict(
+      stickfigure=sf,
+      first_stick=first_stick,
+      root_direction_follow_stick_figure_root=root_direction_follow_stick_figure_root,
+  )
+  # Get the directional x and y axis creases (convert x,y axis in 3D space to
+  # creases in 2D space) for each flap.
+  xy_axis_dict = heuristics_3d_utils.get_directorial_xy_axis_crease_on_flap(
+      shaping_rectangle_dict=shaping_rectangle_dict,
+      shaping_root=shaping_root,
+      pleats=ff_solution.final_state.pleats,
+      stick_side_dict=stick_side_dict,
+      grid_size=grid_size,
+  )
+
+  # Get crease dict from the xy axis, local rotation axis, and rotation angle.
+  crease_dict, depth_dict = (
+      heuristics_3d_utils.get_crease_from_local_rotation_axis_and_xy_axis_dict(
+          flap_post_dict=flap_post_dict,
+          xy_axis_dict=xy_axis_dict,
+          grid_size=grid_size,
+      )
+  )
+
+  # Get the zigzag params by sweeping different parameters to match the creases.
+  zigzag_params = heuristics_3d_utils.get_zigzag_params_from_crease_dict(
+      crease_dict=crease_dict,
+      grid_size=grid_size,
+      rect_dict=shaping_rectangle_dict,
+      depth_dict=depth_dict,
+  )
+  return tuple(zigzag_params)
+
+
+def shape_cp_with_heuristics_3d(
+    cp: crease_pattern_lib.CreasePattern,
+    grid_size: int,
+    sf: stick_figure_lib.StickFigure,
+    packing: packing_output.PackingOutput,
+    ff_solution: hinge_utils.SolverResult,
+    shaping_flaps: list[shaping_elements.ShapingFlap],
+    shaping_rivers: list[shaping_elements.ShapingRiver],
+) -> crease_pattern_lib.CreasePattern:
+  """Shapes a crease pattern with heuristics 3D.
+
+  Args:
+    cp: The crease pattern to be shaped.
+    grid_size: The grid size of the box-pleating grid.
+    sf: The stick figure to be shaped.
+    packing: The packing output.
+    ff_solution: The hinge solver result.
+    shaping_flaps: The list of all flaps.
+    shaping_rivers: The list of all rivers.
+
+  Raises:
+    RuntimeError: If no zigzag or inscribed polygon shaping creases are added
+      with heuristics.
+
+  Returns:
+    The shaped crease pattern.
+  """
+  root_stick_direction = (
+      heuristics.compute_root_stick_direction_follow_stick_figure_root(
+          sf, shaping_flaps, shaping_rivers
+      )
+  )
+  rectangles = [
+      shaping_flap.to_legacy_rectangle() for shaping_flap in shaping_flaps
+  ]
+  # Step 1: Get shaping elements and shaping parameters.
+  zigzag_params = get_3d_heuristic_params(
+      sf=sf,
+      packing=packing,
+      ff_solution=ff_solution,
+      shaping_rectangles=rectangles,
+      shaping_rivers=shaping_rivers,
+      grid_size=grid_size,
+      root_direction_follow_stick_figure_root=root_stick_direction,
+  )
+
+  # Step 2: Shape the crease pattern.
+  orig_num_creases = len(cp.creases)
+  if zigzag_params:
+    cp = zigzag_shaping.shape_cp_with_zigzags_pipeline_wrapper(
+        cp=cp,
+        grid_size=grid_size,
+        rectangles=rectangles,
+        rivers=shaping_rivers,
+        element_shaping_params=zigzag_params,
+    )
+
+  # NOTE: Add support for 3D inscribed polygon shaping.
+  if len(cp.creases) == orig_num_creases:
+    raise RuntimeError(
+        'No zigzag or inscribed polygon shaping creases added with heuristics!'
+    )
+
+  return cp

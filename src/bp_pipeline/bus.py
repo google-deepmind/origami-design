@@ -1226,6 +1226,10 @@ class ShapingStrategy(enum.Enum):
   ROTATE_BEND = 'rotate_bend'
   NO_FLIP = 'no_flip'
   SHALLOW_FOLDS = 'shallow_folds'
+  TOOLBOX = 'toolbox'
+  POSE_FIGURE = 'pose_figure'
+  POSE_SEARCH = 'pose_search'
+  POSE_GREEDY = 'pose_greedy'
   NONE = 'none'
 
 
