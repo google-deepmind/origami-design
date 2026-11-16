@@ -207,6 +207,9 @@ class ShapingFlap(rect_utils.Rectangle[float]):
   _circle_centers: Sequence[point_utils.Point]
   grid_size: int
 
+  shaping_history: list[shaping_types.ZigzagParams] = dataclasses.field(
+      default_factory=list
+  )
   max_shaping_depth: int | None = None
 
   creases: list[crease_utils.Crease] = dataclasses.field(default_factory=list)
@@ -256,6 +259,7 @@ class ShapingFlap(rect_utils.Rectangle[float]):
     return dataclasses.replace(
         self,
         _circle_centers=list(self._circle_centers),
+        shaping_history=list(self.shaping_history),
         creases=list(self.creases),
     )
 
@@ -505,7 +509,9 @@ class ShapingFlap(rect_utils.Rectangle[float]):
         rectangle.name,
     )
 
-  def shrink(self, depth: float) -> 'ShapingFlap':
+  def shrink(
+      self, depth: float, copy_shaping_history: bool = True
+  ) -> 'ShapingFlap':
     """Shrinks the shaping flap by a given grid-unit normalized depth."""
     new_flap = ShapingFlap.from_centers(
         self.circle_centers,
@@ -518,6 +524,9 @@ class ShapingFlap(rect_utils.Rectangle[float]):
         max_shaping_depth=int(self.max_shaping_depth - depth)
         if self.max_shaping_depth
         else None,
+        shaping_history=copy.copy(self.shaping_history)
+        if copy_shaping_history
+        else [],
     )
     return new_flap.extend_creases(self.creases)
 
@@ -818,6 +827,9 @@ class ShapingRiver:
   width: float
   grid_size: int
 
+  shaping_history: list[shaping_types.RiverZigzagParams] = dataclasses.field(
+      default_factory=list
+  )
   _max_shaping_depth: float | None = None
   _ridges: Sequence[crease_utils.Crease] | None = None
   _outer_bank_index: shaping_types.BankIndex | None = None
@@ -881,6 +893,7 @@ class ShapingRiver:
         self,
         bank_1=list(self.bank_1),
         bank_2=list(self.bank_2),
+        shaping_history=list(self.shaping_history),
         _ridges=list(self._ridges) if self._ridges is not None else None,
         creases=list(self.creases),
     )
@@ -1214,6 +1227,7 @@ class ShapingRiver:
       self,
       bank_index: shaping_types.BankIndex,
       inscribe_depth: float,
+      copy_shaping_history: bool = True,
   ) -> 'ShapingRiver':
     """Shrinks the river inwards along the given bank."""
     if inscribe_depth >= self.width:
@@ -1228,6 +1242,9 @@ class ShapingRiver:
         bank_2=new_bank if bank_index == 'SECOND' else self.bank_2,
         width=self.width - inscribe_depth,
         grid_size=self.grid_size,
+        shaping_history=copy.copy(self.shaping_history)
+        if copy_shaping_history
+        else [],
     ).extend_creases(self.creases)
 
   def get_circumbscribed_river(
@@ -1235,6 +1252,7 @@ class ShapingRiver:
       width: float,
       name: str,
       outer_bank_index: shaping_types.BankIndex,
+      copy_shaping_history: bool = True,
   ) -> 'ShapingRiver':
     """Divides the river into an outer river of width `width` and an inner river."""
     if width <= 0:
@@ -1249,6 +1267,9 @@ class ShapingRiver:
         bank_2=inscribed_bank if outer_bank_index == 'FIRST' else outer_bank,
         width=width,
         grid_size=self.grid_size,
+        shaping_history=copy.copy(self.shaping_history)
+        if copy_shaping_history
+        else [],
     ).extend_creases(self.creases)
 
   def rename_and_copy(self, name: str) -> 'ShapingRiver':

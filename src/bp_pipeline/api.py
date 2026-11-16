@@ -35,6 +35,7 @@ from .crease_pattern import crease as crease_lib
 from .crease_pattern import crease_pattern as cp_lib
 from .packing import config as packing_config_lib
 from .packing import stacking as stacking_lib
+from .shaping import fidelity as fidelity_lib
 from .shaping import heuristics_3d
 from .solving import hinges as hinge_utils
 from .stick_figures import stick as stick_lib
@@ -88,7 +89,9 @@ render_stick_figure_svg = viz.render_stick_figure_svg
 render_packed_overlay_svg = viz.render_packed_overlay_svg
 stage_display_name = viz.stage_display_name
 FoldedMesh3D = render_3d.FoldedMesh3D
+FoldedModel = fidelity_lib.FoldedModel
 build_folded_mesh_3d = render_3d.build_folded_mesh_3d
+evaluate_fidelity = fidelity_lib.evaluate_fidelity
 mesh_to_fold_dict = render_3d.mesh_to_fold_dict
 save_3d_turnaround = render_3d.save_3d_turnaround
 save_stick_figure_views = render_summary.save_stick_figure_views
@@ -1114,6 +1117,7 @@ __all__ = (
     'Fold',
     'FoldStrategy3D',
     'FoldedMesh3D',
+    'FoldedModel',
     'PRODUCTION_SWEEP',
     'PackedCreasePattern',
     'PackerOptions',
@@ -1138,6 +1142,7 @@ __all__ = (
     'StickFigure',
     'build_folded_mesh_3d',
     'dumps',
+    'evaluate_fidelity',
     'fold',
     'from_bp_studio',
     'from_dict',
