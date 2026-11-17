@@ -1,0 +1,315 @@
+{
+  "name": "wyrmlord_dragon_v4",
+  "category": "mythical",
+  "color_top": [
+    148,
+    24,
+    28
+  ],
+  "color_bottom": [
+    224,
+    184,
+    108
+  ],
+  "complexity": 4,
+  "root": "lumbar",
+  "children": [
+    {
+      "name": "lumbar",
+      "start": "j_pelvis",
+      "end": "j_withers",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 14.0,
+      "length": 5,
+      "width": 2.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "thorax",
+      "start": "j_withers",
+      "end": "j_chest",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 2.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck",
+      "start": "j_chest",
+      "end": "j_crown",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 58.0,
+      "length": 6,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_base",
+      "start": "j_pelvis",
+      "end": "j_tail1",
+      "azimuth_angle": 180.0,
+      "elevation_angle": -18.0,
+      "length": 4,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_mid",
+      "start": "j_tail1",
+      "end": "j_tail2",
+      "azimuth_angle": 180.0,
+      "elevation_angle": 14.0,
+      "length": 4,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_whip",
+      "start": "j_tail2",
+      "end": "j_tail_tip",
+      "azimuth_angle": 180.0,
+      "elevation_angle": 46.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "snout",
+      "start": "j_crown",
+      "end": "j_snout_mid",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 14.0,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "fang_tip",
+      "start": "j_snout_mid",
+      "end": "j_snout_tip",
+      "azimuth_angle": 0.0,
+      "elevation_angle": -30.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "horn_L",
+      "start": "j_crown",
+      "end": "j_horn_tip_L",
+      "azimuth_angle": 112.0,
+      "elevation_angle": 56.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "horn_R",
+      "start": "j_crown",
+      "end": "j_horn_tip_R",
+      "azimuth_angle": -112.0,
+      "elevation_angle": 56.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "jaw_L",
+      "start": "j_crown",
+      "end": "j_jaw_tip_L",
+      "azimuth_angle": 12.0,
+      "elevation_angle": -38.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "jaw_R",
+      "start": "j_crown",
+      "end": "j_jaw_tip_R",
+      "azimuth_angle": -12.0,
+      "elevation_angle": -38.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "wing_L",
+      "start": "j_chest",
+      "end": "j_wing_tip_L",
+      "azimuth_angle": 114.0,
+      "elevation_angle": 36.0,
+      "length": 11,
+      "width": 4.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "wing_R",
+      "start": "j_chest",
+      "end": "j_wing_tip_R",
+      "azimuth_angle": -114.0,
+      "elevation_angle": 36.0,
+      "length": 11,
+      "width": 4.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_upper_L",
+      "start": "j_withers",
+      "end": "j_elbow_L",
+      "azimuth_angle": 108.0,
+      "elevation_angle": -46.0,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_lower_L",
+      "start": "j_elbow_L",
+      "end": "j_wrist_L",
+      "azimuth_angle": 28.0,
+      "elevation_angle": -68.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_claw_L",
+      "start": "j_wrist_L",
+      "end": "j_fore_tip_L",
+      "azimuth_angle": 18.0,
+      "elevation_angle": -8.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_upper_R",
+      "start": "j_withers",
+      "end": "j_elbow_R",
+      "azimuth_angle": -108.0,
+      "elevation_angle": -46.0,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_lower_R",
+      "start": "j_elbow_R",
+      "end": "j_wrist_R",
+      "azimuth_angle": -28.0,
+      "elevation_angle": -68.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_claw_R",
+      "start": "j_wrist_R",
+      "end": "j_fore_tip_R",
+      "azimuth_angle": -18.0,
+      "elevation_angle": -8.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_thigh_L",
+      "start": "j_pelvis",
+      "end": "j_hock_L",
+      "azimuth_angle": 158.0,
+      "elevation_angle": -34.0,
+      "length": 3,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_shin_L",
+      "start": "j_hock_L",
+      "end": "j_ankle_L",
+      "azimuth_angle": 145.0,
+      "elevation_angle": -72.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_claw_L",
+      "start": "j_ankle_L",
+      "end": "j_hind_tip_L",
+      "azimuth_angle": 44.0,
+      "elevation_angle": -8.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_thigh_R",
+      "start": "j_pelvis",
+      "end": "j_hock_R",
+      "azimuth_angle": -158.0,
+      "elevation_angle": -34.0,
+      "length": 3,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_shin_R",
+      "start": "j_hock_R",
+      "end": "j_ankle_R",
+      "azimuth_angle": -145.0,
+      "elevation_angle": -72.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_claw_R",
+      "start": "j_ankle_R",
+      "end": "j_hind_tip_R",
+      "azimuth_angle": -44.0,
+      "elevation_angle": -8.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      24,
+      -22,
+      14
+    ],
+    [
+      -20,
+      20,
+      15
+    ],
+    [
+      20,
+      -20,
+      15
+    ],
+    [
+      -20,
+      -20,
+      15
+    ],
+    [
+      0,
+      25,
+      10
+    ],
+    [
+      0,
+      -25,
+      10
+    ],
+    [
+      25,
+      0,
+      10
+    ]
+  ]
+}

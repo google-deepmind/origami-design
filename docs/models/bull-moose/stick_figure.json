@@ -1,0 +1,149 @@
+{
+  "name": "Bull moose with intricate webbed skeletal antler points",
+  "category": "diverse and detailed moose, with intricate complex antlers",
+  "color_top": [
+    84,
+    54,
+    34
+  ],
+  "color_bottom": [
+    120,
+    100,
+    80
+  ],
+  "complexity": 1,
+  "root": "body",
+  "children": [
+    {
+      "name": "body",
+      "start": "hips",
+      "end": "shoulders",
+      "azimuth_angle": 0,
+      "elevation_angle": 0.0,
+      "length": 5,
+      "width": 3.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck",
+      "start": "shoulders",
+      "end": "head_base",
+      "azimuth_angle": 0,
+      "elevation_angle": 45.0,
+      "length": 3,
+      "width": 2.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "head",
+      "start": "head_base",
+      "end": "muzzle",
+      "azimuth_angle": 0,
+      "elevation_angle": -10.0,
+      "length": 2,
+      "width": 2.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "antler_left_front",
+      "start": "head_base",
+      "end": "antler_left_front_tip",
+      "azimuth_angle": 60.0,
+      "elevation_angle": 50.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "antler_left_mid",
+      "start": "head_base",
+      "end": "antler_left_mid_tip",
+      "azimuth_angle": 90.0,
+      "elevation_angle": 40.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "antler_left_back",
+      "start": "head_base",
+      "end": "antler_left_back_tip",
+      "azimuth_angle": 120.0,
+      "elevation_angle": 50.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "antler_right_front",
+      "start": "head_base",
+      "end": "antler_right_front_tip",
+      "azimuth_angle": -60.0,
+      "elevation_angle": 50.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "antler_right_mid",
+      "start": "head_base",
+      "end": "antler_right_mid_tip",
+      "azimuth_angle": -90.0,
+      "elevation_angle": 40.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "antler_right_back",
+      "start": "head_base",
+      "end": "antler_right_back_tip",
+      "azimuth_angle": -120.0,
+      "elevation_angle": 50.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "front_left_leg",
+      "start": "shoulders",
+      "end": "front_left_hoof",
+      "azimuth_angle": 80.0,
+      "elevation_angle": -80.0,
+      "length": 5,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "front_right_leg",
+      "start": "shoulders",
+      "end": "front_right_hoof",
+      "azimuth_angle": -80.0,
+      "elevation_angle": -80.0,
+      "length": 5,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "rear_left_leg",
+      "start": "hips",
+      "end": "rear_left_hoof",
+      "azimuth_angle": 100.0,
+      "elevation_angle": -80.0,
+      "length": 5,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "rear_right_leg",
+      "start": "hips",
+      "end": "rear_right_hoof",
+      "azimuth_angle": -100.0,
+      "elevation_angle": -80.0,
+      "length": 5,
+      "width": 1.0,
+      "shaping_flap": false
+    }
+  ],
+  "views": []
+}

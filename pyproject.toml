@@ -39,6 +39,7 @@ bp-pipeline = "bp_pipeline.cli:main"
 [project.urls]
 Paper = "https://arxiv.org/abs/2606.26299"
 Repository = "https://github.com/google-deepmind/origami-design"
+Studio = "https://google-deepmind.github.io/origami-design/"
 
 [project.optional-dependencies]
 dev = [

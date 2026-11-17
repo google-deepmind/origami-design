@@ -1,0 +1,215 @@
+{
+  "name": "Peacock standing with huge circular tail fan",
+  "category": "birds",
+  "color_top": [
+    0,
+    128,
+    255
+  ],
+  "color_bottom": [
+    34,
+    139,
+    34
+  ],
+  "complexity": 2,
+  "root": "body_core",
+  "children": [
+    {
+      "name": "body_core",
+      "start": "pelvis",
+      "end": "chest",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 0.0,
+      "length": 3,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck",
+      "start": "chest",
+      "end": "head_base",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 60.0,
+      "length": 4,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "head",
+      "start": "head_base",
+      "end": "beak_tip",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 5.0,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_l",
+      "start": "pelvis",
+      "end": "foot_l",
+      "azimuth_angle": 280.0,
+      "elevation_angle": -75.0,
+      "length": 4,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_r",
+      "start": "pelvis",
+      "end": "foot_r",
+      "azimuth_angle": 80.0,
+      "elevation_angle": -75.0,
+      "length": 4,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_center",
+      "start": "pelvis",
+      "end": "t_c",
+      "azimuth_angle": 180.0,
+      "elevation_angle": 90.0,
+      "length": 8,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_l1",
+      "start": "pelvis",
+      "end": "t_l1",
+      "azimuth_angle": 200.0,
+      "elevation_angle": 80.0,
+      "length": 8,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_r1",
+      "start": "pelvis",
+      "end": "t_r1",
+      "azimuth_angle": 160.0,
+      "elevation_angle": 80.0,
+      "length": 8,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_l2",
+      "start": "pelvis",
+      "end": "t_l2",
+      "azimuth_angle": 220.0,
+      "elevation_angle": 65.0,
+      "length": 8,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_r2",
+      "start": "pelvis",
+      "end": "t_r2",
+      "azimuth_angle": 140.0,
+      "elevation_angle": 65.0,
+      "length": 8,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_l3",
+      "start": "pelvis",
+      "end": "t_l3",
+      "azimuth_angle": 240.0,
+      "elevation_angle": 45.0,
+      "length": 8,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_r3",
+      "start": "pelvis",
+      "end": "t_r3",
+      "azimuth_angle": 120.0,
+      "elevation_angle": 45.0,
+      "length": 8,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_l4",
+      "start": "pelvis",
+      "end": "t_l4",
+      "azimuth_angle": 260.0,
+      "elevation_angle": 25.0,
+      "length": 7,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_r4",
+      "start": "pelvis",
+      "end": "t_r4",
+      "azimuth_angle": 100.0,
+      "elevation_angle": 25.0,
+      "length": 7,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_l5",
+      "start": "pelvis",
+      "end": "t_l5",
+      "azimuth_angle": 280.0,
+      "elevation_angle": 5.0,
+      "length": 6,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_r5",
+      "start": "pelvis",
+      "end": "t_r5",
+      "azimuth_angle": 80.0,
+      "elevation_angle": 5.0,
+      "length": 6,
+      "width": 0.5,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      20,
+      20,
+      20
+    ],
+    [
+      -20,
+      20,
+      20
+    ],
+    [
+      20,
+      -20,
+      20
+    ],
+    [
+      0,
+      30,
+      5
+    ],
+    [
+      0,
+      -30,
+      5
+    ],
+    [
+      30,
+      0,
+      10
+    ],
+    [
+      -30,
+      0,
+      10
+    ]
+  ]
+}

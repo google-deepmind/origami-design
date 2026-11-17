@@ -1,0 +1,195 @@
+{
+  "name": "Stooping golden eagle v3D: two-toed river feet (talon + hallux), hooked beak, broad wings",
+  "category": "birds",
+  "color_top": [
+    96,
+    62,
+    30
+  ],
+  "color_bottom": [
+    226,
+    196,
+    128
+  ],
+  "complexity": 3,
+  "root": "body",
+  "children": [
+    {
+      "name": "body",
+      "start": "hips",
+      "end": "shoulders",
+      "azimuth_angle": 0,
+      "elevation_angle": 5,
+      "length": 3,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck",
+      "start": "shoulders",
+      "end": "nape",
+      "azimuth_angle": 0,
+      "elevation_angle": 25,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "head",
+      "start": "nape",
+      "end": "cere",
+      "azimuth_angle": 0,
+      "elevation_angle": 0,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "beak",
+      "start": "cere",
+      "end": "hook_bend",
+      "azimuth_angle": 0,
+      "elevation_angle": -20,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "beak_hook",
+      "start": "hook_bend",
+      "end": "beak_tip",
+      "azimuth_angle": 0,
+      "elevation_angle": -75,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "wing_L",
+      "start": "shoulders",
+      "end": "wingtip_L",
+      "azimuth_angle": 95,
+      "elevation_angle": 12,
+      "length": 8,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "wing_R",
+      "start": "shoulders",
+      "end": "wingtip_R",
+      "azimuth_angle": -95,
+      "elevation_angle": 12,
+      "length": 8,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail",
+      "start": "hips",
+      "end": "tail_tip",
+      "azimuth_angle": 180,
+      "elevation_angle": 5,
+      "length": 4,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L",
+      "start": "hips",
+      "end": "ankle_L",
+      "azimuth_angle": -35,
+      "elevation_angle": -50,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "talon_L",
+      "start": "ankle_L",
+      "end": "talon_tip_L",
+      "azimuth_angle": -15,
+      "elevation_angle": -30,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "hallux_L",
+      "start": "ankle_L",
+      "end": "hallux_tip_L",
+      "azimuth_angle": -165,
+      "elevation_angle": -40,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R",
+      "start": "hips",
+      "end": "ankle_R",
+      "azimuth_angle": 35,
+      "elevation_angle": -50,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "talon_R",
+      "start": "ankle_R",
+      "end": "talon_tip_R",
+      "azimuth_angle": 15,
+      "elevation_angle": -30,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "hallux_R",
+      "start": "ankle_R",
+      "end": "hallux_tip_R",
+      "azimuth_angle": 165,
+      "elevation_angle": -40,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      12,
+      9,
+      8
+    ],
+    [
+      -10,
+      10,
+      9
+    ],
+    [
+      10,
+      -10,
+      9
+    ],
+    [
+      -10,
+      -10,
+      9
+    ],
+    [
+      1,
+      14,
+      4
+    ],
+    [
+      1,
+      -14,
+      4
+    ],
+    [
+      14,
+      1,
+      5
+    ]
+  ]
+}

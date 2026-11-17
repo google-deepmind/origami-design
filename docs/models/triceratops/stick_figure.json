@@ -1,0 +1,235 @@
+{
+  "name": "Triceratops v4B: Symmetric Corner-Packed Fanned Cranial Shield",
+  "category": "dinosaurs",
+  "color_top": [
+    92,
+    102,
+    64
+  ],
+  "color_bottom": [
+    208,
+    192,
+    148
+  ],
+  "complexity": 3,
+  "root": "trunk",
+  "children": [
+    {
+      "name": "trunk",
+      "start": "j_pelvis",
+      "end": "j_withers",
+      "azimuth_angle": 0,
+      "elevation_angle": 0,
+      "length": 4,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck",
+      "start": "j_withers",
+      "end": "j_occiput",
+      "azimuth_angle": 0,
+      "elevation_angle": 10,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "frill_L",
+      "start": "j_occiput",
+      "end": "j_frill_rim_L",
+      "azimuth_angle": 158,
+      "elevation_angle": 58,
+      "length": 7,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "frill_R",
+      "start": "j_occiput",
+      "end": "j_frill_rim_R",
+      "azimuth_angle": -158,
+      "elevation_angle": 58,
+      "length": 7,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "brow_horn_L",
+      "start": "j_occiput",
+      "end": "j_brow_tip_L",
+      "azimuth_angle": 22,
+      "elevation_angle": 28,
+      "length": 5,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "brow_horn_R",
+      "start": "j_occiput",
+      "end": "j_brow_tip_R",
+      "azimuth_angle": -22,
+      "elevation_angle": 28,
+      "length": 5,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "rostrum",
+      "start": "j_occiput",
+      "end": "j_beak_tip",
+      "azimuth_angle": 0,
+      "elevation_angle": -18,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "nasal_horn",
+      "start": "j_beak_tip",
+      "end": "j_nasal_tip",
+      "azimuth_angle": 0,
+      "elevation_angle": 56,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "humerus_L",
+      "start": "j_withers",
+      "end": "j_elbow_L",
+      "azimuth_angle": 78,
+      "elevation_angle": -32,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "manus_L",
+      "start": "j_elbow_L",
+      "end": "j_hand_L",
+      "azimuth_angle": 56,
+      "elevation_angle": -88,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "humerus_R",
+      "start": "j_withers",
+      "end": "j_elbow_R",
+      "azimuth_angle": -78,
+      "elevation_angle": -32,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "manus_R",
+      "start": "j_elbow_R",
+      "end": "j_hand_R",
+      "azimuth_angle": -56,
+      "elevation_angle": -88,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "femur_L",
+      "start": "j_pelvis",
+      "end": "j_knee_L",
+      "azimuth_angle": 105,
+      "elevation_angle": -35,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "pes_L",
+      "start": "j_knee_L",
+      "end": "j_foot_L",
+      "azimuth_angle": 130,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "femur_R",
+      "start": "j_pelvis",
+      "end": "j_knee_R",
+      "azimuth_angle": -105,
+      "elevation_angle": -35,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "pes_R",
+      "start": "j_knee_R",
+      "end": "j_foot_R",
+      "azimuth_angle": -130,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_base",
+      "start": "j_pelvis",
+      "end": "j_tail_mid",
+      "azimuth_angle": 180,
+      "elevation_angle": -10,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_tip",
+      "start": "j_tail_mid",
+      "end": "j_tail_end",
+      "azimuth_angle": 180,
+      "elevation_angle": -4,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      16.0,
+      20.0,
+      11.0
+    ],
+    [
+      -20,
+      20,
+      15
+    ],
+    [
+      20,
+      -20,
+      15
+    ],
+    [
+      -20,
+      -20,
+      15
+    ],
+    [
+      0,
+      25,
+      10
+    ],
+    [
+      0,
+      -25,
+      10
+    ],
+    [
+      25,
+      0,
+      10
+    ]
+  ]
+}

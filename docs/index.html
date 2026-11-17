@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COrigami Studio — Automated Box-Pleated Origami Design &amp; 3D Shaping</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpolygon points='12 2 22 8.5 12 15 2 8.5' fill='%23b83a2d'/%3E%3Cpolygon points='2 13 12 19.5 22 13 12 22' fill='%231d4ed8'/%3E%3C/svg%3E">
+  <meta name="description" content="Interactive 3D origami gallery and folding studio for COrigami (Google DeepMind): explore globally flat-foldable box-pleated crease patterns and sculpted 3D origami models.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="COrigami Studio">
+  <meta property="og:title" content="COrigami Studio — fold AI-designed origami in 3D">
+  <meta property="og:description" content="Explore globally flat-foldable crease patterns designed with COrigami (Google DeepMind) and fold each model from a flat sheet to a sculpted 3D shape.">
+  <meta property="og:url" content="https://www.tomzahavy.com/origami-design/">
+  <meta property="og:image" content="https://www.tomzahavy.com/origami-design/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A golden eagle folded from a single square of paper, beside the title COrigami Studio.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="COrigami Studio — fold AI-designed origami in 3D">
+  <meta name="twitter:description" content="Explore globally flat-foldable crease patterns designed with COrigami (Google DeepMind) and fold each model from a flat sheet to a sculpted 3D shape.">
+  <meta name="twitter:image" content="https://www.tomzahavy.com/origami-design/og-card.png">
+  <meta name="twitter:image:alt" content="A golden eagle folded from a single square of paper, beside the title COrigami Studio.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+      "earcut": "https://cdn.jsdelivr.net/npm/earcut@2.2.4/+esm"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="#" class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 22 8.5 12 15 2 8.5 12 2"></polygon>
+            <polyline points="2 15.5 12 22 22 15.5"></polyline>
+            <line x1="12" y1="15" x2="12" y2="22"></line>
+          </svg>
+        </span>
+        <span class="brand-title">COrigami Studio</span>
+        <span class="brand-tag">Co-Designing Flat-Foldable 3D Origami &middot; Google DeepMind</span>
+      </a>
+
+      <div class="header-actions">
+        <label class="btn btn-primary" for="local-file-input" title="Load .fold, .svg crease pattern, or stick_figure.json">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Open Model
+        </label>
+        <input id="local-file-input" type="file" accept=".fold,.svg,.json" multiple hidden>
+
+        <button id="contribute-btn" type="button" class="btn">
+          + Add to Gallery
+        </button>
+
+        <a class="btn" href="https://arxiv.org/abs/2606.26299" target="_blank" rel="noopener">
+          Paper (arXiv)
+        </a>
+
+        <a class="btn" href="https://github.com/google-deepmind/origami-design" target="_blank" rel="noopener">
+          GitHub
+        </a>
+
+        <button id="theme-toggle-btn" type="button" class="btn btn-icon" title="Toggle Light Gallery / Dark Spotlight Studio" aria-label="Toggle color theme">
+          <span id="theme-icon">☾</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-wrap">
+    <!-- Quick Model Switcher -->
+    <nav class="selector-strip" id="model-selector-strip" aria-label="Showcase models"></nav>
+
+    <!-- Main Interactive Workbench -->
+    <section class="studio-grid" aria-label="Interactive 3D Origami Studio">
+      <!-- Left: 3D Paper Sculpture Stage -->
+      <div class="stage-card">
+        <div id="stage-canvas-wrap">
+          <canvas id="origami-canvas"></canvas>
+          <div id="anatomy-pins"></div>
+
+          <div class="stage-top-hud">
+            <div class="stage-model-badge">
+              <h1 id="stage-title">Golden Eagle</h1>
+              <div class="stage-model-sub" id="stage-subtitle">Aquila chrysaetos</div>
+            </div>
+
+            <div class="stage-cam-bar" role="toolbar" aria-label="Camera presets">
+              <button type="button" class="hud-pill active" data-cam="hero">Hero</button>
+              <button type="button" class="hud-pill" data-cam="side">Side</button>
+              <button type="button" class="hud-pill" data-cam="front">Front</button>
+              <button type="button" class="hud-pill" data-cam="top">Top</button>
+              <button type="button" class="hud-pill active" id="turntable-btn" title="Gentle studio turntable">Orbit ↻</button>
+            </div>
+          </div>
+
+          <div class="stage-loader" id="stage-loader">Folding paper mesh…</div>
+        </div>
+
+        <!-- Bottom Scrubber & Paper Material Studio -->
+        <div class="stage-bottom-dock">
+          <div class="fold-scrubber-row">
+            <button type="button" class="btn btn-primary btn-fold-play" id="fold-play-btn">
+              ▶ Unfold / Fold
+            </button>
+
+            <div class="scrubber-track-wrap">
+              <div class="scrubber-labels">
+                <span>0% Flat Sheet</span>
+                <span id="fold-stage-caption"><strong>100%</strong> &middot; 3D Sculpted Pose</span>
+                <span>100% Shaped</span>
+              </div>
+              <input type="range" id="fold-slider" class="fold-range" min="0" max="100" step="0.5" value="100" aria-label="Folding progress percentage">
+            </div>
+          </div>
+
+          <div class="material-row">
+            <div class="palette-group" id="paper-palette-group">
+              <span class="control-caption">Washi Paper</span>
+              <!-- Populated by app.js -->
+              <div class="color-pair-pickers" title="Custom dorsal (front) and ventral (back) paper colors">
+                <input type="color" id="front-color-picker" value="#9E3329" aria-label="Dorsal paper color">
+                <input type="color" id="back-color-picker" value="#F3E7CE" aria-label="Ventral paper color">
+              </div>
+            </div>
+
+            <div class="toggle-group">
+              <button type="button" class="chip-toggle active" id="toggle-creases-btn" title="Show subtle mountain/valley crease ridges">Crease Ridges</button>
+              <button type="button" class="chip-toggle active" id="toggle-two-stage-btn" title="Fold base creases first (0-50%), then 3D shaping folds (50-100%)">2-Stage Fold</button>
+              <button type="button" class="chip-toggle" id="toggle-pins-btn" title="Show 3D anatomical flap callouts">Anatomy Pins</button>
+              <button type="button" class="chip-toggle" id="toggle-xray-btn" title="Translucent X-ray layer inspection">X-Ray</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Pipeline Inspector & Downloads -->
+      <aside class="inspector-card">
+        <div class="inspector-tabs" role="tablist">
+          <button type="button" class="tab-btn active" data-tab="shaped" role="tab">Shaped CP</button>
+          <button type="button" class="tab-btn" data-tab="solving" role="tab">Solved Base</button>
+          <button type="button" class="tab-btn" data-tab="packing" role="tab">Packing</button>
+          <button type="button" class="tab-btn" data-tab="skeleton" role="tab">3D Skeleton</button>
+        </div>
+
+        <div class="diagram-viewport">
+          <div id="cp-svg-host"></div>
+          <div id="skeleton-canvas-wrap">
+            <canvas id="skeleton-canvas"></canvas>
+          </div>
+          <div class="diagram-legend" id="diagram-legend">
+            <div class="legend-pills" id="cp-legend-pills">
+              <span><i class="legend-dot" style="background:#dc2626"></i>Mountain</span>
+              <span><i class="legend-dot" style="background:#2563eb"></i>Valley</span>
+              <span><i class="legend-dot" style="background:#111827"></i>Border</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="inspector-body">
+          <div class="metrics-strip">
+            <div class="metric-cell">
+              <span class="metric-label">Grid</span>
+              <span class="metric-val" id="spec-grid">28×28</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Sticks</span>
+              <span class="metric-val" id="spec-sticks">14</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Creases</span>
+              <span class="metric-val" id="spec-creases">1,050</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Strain</span>
+              <span class="metric-val" id="spec-strain">0.17%</span>
+            </div>
+          </div>
+
+          <p class="inspector-summary" id="inspector-summary"></p>
+
+          <div class="technique-tags" id="inspector-techniques"></div>
+
+          <div class="region-explorer" id="region-explorer">
+            <span class="control-caption">Highlight Flap / River on 3D Paper</span>
+            <div class="region-pills" id="region-pills"></div>
+          </div>
+
+          <div class="download-bar">
+            <span class="control-caption">Download Open Formats (CC-BY 4.0)</span>
+            <div class="download-links">
+              <a class="btn" id="dl-fold" href="#" download>⬇ .fold (3D)</a>
+              <a class="btn" id="dl-svg" href="#" download>⬇ Shaped .svg</a>
+              <a class="btn" id="dl-json" href="#" download>⬇ Tree .json</a>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- Showcase Gallery Grid -->
+    <section class="gallery-section" id="gallery">
+      <div class="section-head">
+        <div>
+          <h2>Curated Origami Showcase</h2>
+          <p>Globally flat-foldable single-square origami models co-designed and sculpted with the <code>bp-pipeline</code> shaping agent — zero cuts, zero glue.</p>
+        </div>
+        <div class="category-filters" id="category-filters"></div>
+      </div>
+
+      <div class="gallery-grid" id="gallery-grid"></div>
+    </section>
+  </main>
+
+  <!-- Drag & Drop Overlay -->
+  <div class="drop-overlay" id="drop-overlay">
+    <div>
+      <h2>Drop Origami File(s) to Inspect in 3D</h2>
+      <p>Supports <code>.fold</code> (FOLD v1.2), <code>.svg</code> crease patterns, and <code>stick_figure.json</code></p>
+    </div>
+  </div>
+
+  <!-- Contribute Modal -->
+  <div class="modal-backdrop" id="contribute-modal" role="dialog" aria-modal="true" aria-labelledby="contribute-title">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h3 id="contribute-title">Add Your Origami Model to the Gallery</h3>
+        <button type="button" class="btn btn-icon" id="close-modal-btn" aria-label="Close modal">✕</button>
+      </div>
+      <p style="font-size:0.88rem; color:var(--text-secondary); margin-top:0;">
+        You can preview any local <code>.fold</code>, <code>.svg</code>, or <code>stick_figure.json</code> immediately via <strong>Open Model</strong> (or drag-and-drop onto this page). To contribute a model permanently to the open-source showcase:
+      </p>
+      <pre><code># 1. Design &amp; shape your stick figure with bp-pipeline:
+uv run bp-pipeline my_creature.json -o outputs/my_creature
+
+# 2. Build the static web bundle under docs/models/&lt;slug&gt;/:
+python3 scripts/build_showcase_bundles.py \
+  --input outputs/my_creature \
+  --slug my-creature \
+  --title "My Origami Creature"
+
+# 3. Preview locally at http://localhost:8000 &amp; open a Pull Request:
+python3 -m http.server 8000 -d docs</code></pre>
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+        <a class="btn btn-primary" href="https://github.com/google-deepmind/origami-design/pulls" target="_blank" rel="noopener">Open Pull Request on GitHub ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="site-footer">
+    COrigami (`bp_pipeline`) &middot; Google DeepMind &middot; Code licensed under <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache 2.0</a>, models &amp; crease patterns under <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY 4.0</a>.
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

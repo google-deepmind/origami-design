@@ -1,0 +1,616 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect stroke="black" x="0" y="0" width="48" height="48"/>
+  <line stroke="blue" x1="0" y1="1" x2="1" y2="0"/>
+  <line stroke="blue" x1="1" y1="0" x2="2" y2="1"/>
+  <line stroke="red" x1="1" y1="0" x2="1" y2="27" elevation="1"/>
+  <line stroke="red" x1="2" y1="1" x2="3" y2="2"/>
+  <line stroke="blue" x1="2" y1="1" x2="2" y2="26" elevation="0"/>
+  <line stroke="blue" x1="2" y1="1" x2="46" y2="1" elevation="0"/>
+  <line stroke="blue" x1="3" y1="2" x2="4" y2="3"/>
+  <line stroke="red" x1="3" y1="2" x2="3" y2="25" elevation="1"/>
+  <line stroke="red" x1="3" y1="2" x2="45" y2="2" elevation="1"/>
+  <line stroke="red" x1="4" y1="3" x2="5" y2="4"/>
+  <line stroke="blue" x1="4" y1="3" x2="10" y2="3" elevation="0"/>
+  <line stroke="blue" x1="4" y1="3" x2="4" y2="24" elevation="0"/>
+  <line stroke="blue" x1="5" y1="4" x2="6" y2="5"/>
+  <line stroke="red" x1="5" y1="4" x2="9" y2="4" elevation="1"/>
+  <line stroke="red" x1="5" y1="4" x2="5" y2="23" elevation="1"/>
+  <line stroke="red" x1="7" y1="0" x2="7" y2="1"/>
+  <line stroke="blue" x1="7" y1="1" x2="7" y2="2"/>
+  <line stroke="red" x1="7" y1="2" x2="7" y2="3"/>
+  <line stroke="blue" x1="7" y1="3" x2="7" y2="4"/>
+  <line stroke="red" x1="6" y1="5" x2="7" y2="6"/>
+  <line stroke="blue" x1="6" y1="5" x2="8" y2="5" elevation="0"/>
+  <line stroke="blue" x1="6" y1="5" x2="6" y2="22" elevation="0"/>
+  <line stroke="red" x1="7" y1="4" x2="7" y2="5"/>
+  <line stroke="blue" x1="7" y1="5" x2="7" y2="6"/>
+  <line stroke="red" x1="7" y1="6" x2="8" y2="5"/>
+  <line stroke="red" x1="7" y1="6" x2="7" y2="21" elevation="1"/>
+  <line stroke="blue" x1="8" y1="5" x2="9" y2="4"/>
+  <line stroke="blue" x1="8" y1="5" x2="8" y2="20" elevation="0"/>
+  <line stroke="red" x1="9" y1="4" x2="10" y2="3"/>
+  <line stroke="red" x1="9" y1="4" x2="9" y2="12" elevation="1"/>
+  <line stroke="blue" x1="10" y1="3" x2="11" y2="2"/>
+  <line stroke="blue" x1="10" y1="3" x2="10" y2="11" elevation="0"/>
+  <line stroke="blue" x1="11" y1="0" x2="11" y2="1"/>
+  <line stroke="red" x1="11" y1="1" x2="11" y2="10"/>
+  <line stroke="blue" x1="11" y1="2" x2="12" y2="3"/>
+  <line stroke="red" x1="12" y1="3" x2="13" y2="4"/>
+  <line stroke="blue" x1="12" y1="3" x2="12" y2="9" elevation="0"/>
+  <line stroke="blue" x1="12" y1="3" x2="36" y2="3" elevation="0"/>
+  <line stroke="red" x1="0" y1="13" x2="1" y2="13"/>
+  <line stroke="blue" x1="1" y1="13" x2="2" y2="13"/>
+  <line stroke="red" x1="2" y1="13" x2="3" y2="13"/>
+  <line stroke="blue" x1="3" y1="13" x2="4" y2="13"/>
+  <line stroke="red" x1="4" y1="13" x2="5" y2="13"/>
+  <line stroke="blue" x1="13" y1="4" x2="14" y2="5"/>
+  <line stroke="red" x1="13" y1="4" x2="13" y2="8" elevation="1"/>
+  <line stroke="red" x1="13" y1="4" x2="35" y2="4" elevation="1"/>
+  <line stroke="blue" x1="5" y1="13" x2="6" y2="13"/>
+  <line stroke="red" x1="6" y1="13" x2="7" y2="13"/>
+  <line stroke="blue" x1="7" y1="13" x2="22" y2="13"/>
+  <line stroke="red" x1="10" y1="11" x2="11" y2="10"/>
+  <line stroke="blue" x1="10" y1="11" x2="9" y2="12"/>
+  <line stroke="blue" x1="10" y1="11" x2="38" y2="11" elevation="0"/>
+  <line stroke="blue" x1="11" y1="10" x2="12" y2="9"/>
+  <line stroke="red" x1="11" y1="10" x2="37" y2="10" elevation="1"/>
+  <line stroke="blue" x1="14" y1="5" x2="14" y2="7" elevation="0"/>
+  <line stroke="red" x1="14" y1="5" x2="15" y2="6"/>
+  <line stroke="blue" x1="14" y1="5" x2="34" y2="5" elevation="0"/>
+  <line stroke="red" x1="9" y1="12" x2="8" y2="13"/>
+  <line stroke="red" x1="9" y1="12" x2="23" y2="12" elevation="1"/>
+  <line stroke="red" x1="12" y1="9" x2="13" y2="8"/>
+  <line stroke="blue" x1="12" y1="9" x2="36" y2="9" elevation="0"/>
+  <line stroke="red" x1="15" y1="0" x2="15" y2="1"/>
+  <line stroke="blue" x1="15" y1="1" x2="15" y2="2"/>
+  <line stroke="red" x1="15" y1="2" x2="15" y2="3"/>
+  <line stroke="red" x1="8" y1="13" x2="9" y2="14"/>
+  <line stroke="blue" x1="13" y1="8" x2="14" y2="7"/>
+  <line stroke="red" x1="13" y1="8" x2="35" y2="8" elevation="1"/>
+  <line stroke="blue" x1="15" y1="3" x2="15" y2="4"/>
+  <line stroke="red" x1="15" y1="4" x2="15" y2="5"/>
+  <line stroke="red" x1="14" y1="7" x2="15" y2="6"/>
+  <line stroke="blue" x1="14" y1="7" x2="34" y2="7" elevation="0"/>
+  <line stroke="blue" x1="15" y1="5" x2="15" y2="6"/>
+  <line stroke="red" x1="15" y1="6" x2="33" y2="6" elevation="1"/>
+  <line stroke="blue" x1="9" y1="14" x2="10" y2="15"/>
+  <line stroke="red" x1="9" y1="14" x2="9" y2="21" elevation="1"/>
+  <line stroke="red" x1="9" y1="14" x2="21" y2="14" elevation="1"/>
+  <line stroke="red" x1="10" y1="15" x2="11" y2="16"/>
+  <line stroke="blue" x1="10" y1="15" x2="10" y2="22" elevation="0"/>
+  <line stroke="blue" x1="10" y1="15" x2="20" y2="15" elevation="0"/>
+  <line stroke="blue" x1="11" y1="16" x2="12" y2="17"/>
+  <line stroke="red" x1="11" y1="16" x2="19" y2="16" elevation="1"/>
+  <line stroke="red" x1="11" y1="16" x2="11" y2="23" elevation="1"/>
+  <line stroke="blue" x1="0" y1="20" x2="1" y2="20"/>
+  <line stroke="red" x1="1" y1="20" x2="2" y2="20"/>
+  <line stroke="blue" x1="2" y1="20" x2="3" y2="20"/>
+  <line stroke="red" x1="3" y1="20" x2="4" y2="20"/>
+  <line stroke="blue" x1="4" y1="20" x2="5" y2="20"/>
+  <line stroke="red" x1="5" y1="20" x2="6" y2="20"/>
+  <line stroke="red" x1="12" y1="17" x2="13" y2="18"/>
+  <line stroke="blue" x1="12" y1="17" x2="18" y2="17" elevation="0"/>
+  <line stroke="blue" x1="12" y1="17" x2="12" y2="24" elevation="0"/>
+  <line stroke="blue" x1="6" y1="20" x2="7" y2="20"/>
+  <line stroke="red" x1="7" y1="20" x2="8" y2="20"/>
+  <line stroke="blue" x1="8" y1="20" x2="7" y2="21"/>
+  <line stroke="blue" x1="8" y1="20" x2="9" y2="21"/>
+  <line stroke="red" x1="7" y1="21" x2="6" y2="22"/>
+  <line stroke="red" x1="7" y1="21" x2="9" y2="21" elevation="1"/>
+  <line stroke="blue" x1="13" y1="18" x2="14" y2="19"/>
+  <line stroke="red" x1="13" y1="18" x2="17" y2="18" elevation="1"/>
+  <line stroke="red" x1="13" y1="18" x2="13" y2="25" elevation="1"/>
+  <line stroke="blue" x1="6" y1="22" x2="5" y2="23"/>
+  <line stroke="blue" x1="6" y1="22" x2="10" y2="22" elevation="0"/>
+  <line stroke="red" x1="9" y1="21" x2="10" y2="22"/>
+  <line stroke="blue" x1="23" y1="0" x2="24" y2="1"/>
+  <line stroke="red" x1="23" y1="2" x2="24" y2="1"/>
+  <line stroke="blue" x1="23" y1="2" x2="24" y2="3"/>
+  <line stroke="red" x1="23" y1="4" x2="24" y2="3"/>
+  <line stroke="blue" x1="23" y1="4" x2="24" y2="5"/>
+  <line stroke="red" x1="5" y1="23" x2="4" y2="24"/>
+  <line stroke="red" x1="5" y1="23" x2="11" y2="23" elevation="1"/>
+  <line stroke="blue" x1="14" y1="19" x2="16" y2="19" elevation="0"/>
+  <line stroke="red" x1="14" y1="19" x2="15" y2="20"/>
+  <line stroke="blue" x1="14" y1="19" x2="14" y2="26" elevation="0"/>
+  <line stroke="red" x1="23" y1="6" x2="24" y2="5"/>
+  <line stroke="blue" x1="23" y1="6" x2="24" y2="7"/>
+  <line stroke="blue" x1="24" y1="1" x2="25" y2="0"/>
+  <line stroke="red" x1="24" y1="1" x2="25" y2="2"/>
+  <line stroke="blue" x1="10" y1="22" x2="11" y2="23"/>
+  <line stroke="blue" x1="24" y1="3" x2="25" y2="2"/>
+  <line stroke="red" x1="24" y1="3" x2="25" y2="4"/>
+  <line stroke="blue" x1="4" y1="24" x2="3" y2="25"/>
+  <line stroke="blue" x1="4" y1="24" x2="12" y2="24" elevation="0"/>
+  <line stroke="red" x1="23" y1="8" x2="24" y2="7"/>
+  <line stroke="blue" x1="23" y1="8" x2="24" y2="9"/>
+  <line stroke="blue" x1="24" y1="5" x2="25" y2="4"/>
+  <line stroke="red" x1="24" y1="5" x2="25" y2="6"/>
+  <line stroke="red" x1="17" y1="18" x2="18" y2="17"/>
+  <line stroke="blue" x1="17" y1="18" x2="16" y2="19"/>
+  <line stroke="red" x1="17" y1="18" x2="17" y2="43" elevation="1"/>
+  <line stroke="blue" x1="18" y1="17" x2="19" y2="16"/>
+  <line stroke="blue" x1="18" y1="17" x2="18" y2="42" elevation="0"/>
+  <line stroke="red" x1="16" y1="19" x2="15" y2="20"/>
+  <line stroke="blue" x1="16" y1="19" x2="16" y2="44" elevation="0"/>
+  <line stroke="red" x1="19" y1="16" x2="20" y2="15"/>
+  <line stroke="red" x1="19" y1="16" x2="19" y2="41" elevation="1"/>
+  <line stroke="blue" x1="15" y1="20" x2="16" y2="20"/>
+  <line stroke="red" x1="15" y1="20" x2="15" y2="27" elevation="1"/>
+  <line stroke="blue" x1="20" y1="15" x2="21" y2="14"/>
+  <line stroke="blue" x1="20" y1="15" x2="20" y2="40" elevation="0"/>
+  <line stroke="blue" x1="24" y1="7" x2="25" y2="6"/>
+  <line stroke="red" x1="24" y1="7" x2="25" y2="8"/>
+  <line stroke="red" x1="23" y1="10" x2="24" y2="9"/>
+  <line stroke="blue" x1="23" y1="10" x2="24" y2="11"/>
+  <line stroke="red" x1="3" y1="25" x2="2" y2="26"/>
+  <line stroke="red" x1="3" y1="25" x2="13" y2="25" elevation="1"/>
+  <line stroke="red" x1="21" y1="14" x2="22" y2="13"/>
+  <line stroke="red" x1="21" y1="14" x2="21" y2="39" elevation="1"/>
+  <line stroke="red" x1="11" y1="23" x2="12" y2="24"/>
+  <line stroke="blue" x1="22" y1="13" x2="23" y2="12"/>
+  <line stroke="blue" x1="22" y1="13" x2="22" y2="38" elevation="0"/>
+  <line stroke="red" x1="16" y1="20" x2="17" y2="20"/>
+  <line stroke="blue" x1="24" y1="9" x2="25" y2="8"/>
+  <line stroke="red" x1="24" y1="9" x2="25" y2="10"/>
+  <line stroke="red" x1="23" y1="12" x2="24" y2="11"/>
+  <line stroke="red" x1="23" y1="12" x2="23" y2="37" elevation="1"/>
+  <line stroke="blue" x1="2" y1="26" x2="1" y2="27"/>
+  <line stroke="blue" x1="2" y1="26" x2="14" y2="26" elevation="0"/>
+  <line stroke="blue" x1="17" y1="20" x2="18" y2="20"/>
+  <line stroke="blue" x1="24" y1="11" x2="25" y2="10"/>
+  <line stroke="red" x1="24" y1="11" x2="25" y2="12"/>
+  <line stroke="blue" x1="12" y1="24" x2="13" y2="25"/>
+  <line stroke="red" x1="18" y1="20" x2="19" y2="20"/>
+  <line stroke="red" x1="1" y1="27" x2="0" y2="28"/>
+  <line stroke="red" x1="1" y1="27" x2="15" y2="27" elevation="1"/>
+  <line stroke="blue" x1="19" y1="20" x2="20" y2="20"/>
+  <line stroke="blue" x1="25" y1="12" x2="26" y2="13"/>
+  <line stroke="red" x1="25" y1="12" x2="39" y2="12" elevation="1"/>
+  <line stroke="red" x1="25" y1="12" x2="25" y2="37" elevation="1"/>
+  <line stroke="red" x1="0" y1="28" x2="1" y2="29"/>
+  <line stroke="blue" x1="0" y1="28" x2="17" y2="28" elevation="0"/>
+  <line stroke="red" x1="13" y1="25" x2="14" y2="26"/>
+  <line stroke="red" x1="20" y1="20" x2="21" y2="20"/>
+  <line stroke="blue" x1="21" y1="20" x2="22" y2="20"/>
+  <line stroke="blue" x1="1" y1="29" x2="2" y2="30"/>
+  <line stroke="red" x1="1" y1="29" x2="15" y2="29" elevation="1"/>
+  <line stroke="red" x1="1" y1="29" x2="1" y2="43" elevation="1"/>
+  <line stroke="red" x1="26" y1="13" x2="27" y2="14"/>
+  <line stroke="blue" x1="26" y1="13" x2="41" y2="13" elevation="0"/>
+  <line stroke="blue" x1="26" y1="13" x2="26" y2="38" elevation="0"/>
+  <line stroke="blue" x1="14" y1="26" x2="15" y2="27"/>
+  <line stroke="red" x1="22" y1="20" x2="23" y2="20"/>
+  <line stroke="red" x1="2" y1="30" x2="3" y2="31"/>
+  <line stroke="blue" x1="2" y1="30" x2="14" y2="30" elevation="0"/>
+  <line stroke="blue" x1="2" y1="30" x2="2" y2="42" elevation="0"/>
+  <line stroke="blue" x1="27" y1="14" x2="28" y2="15"/>
+  <line stroke="red" x1="27" y1="14" x2="39" y2="14" elevation="1"/>
+  <line stroke="red" x1="27" y1="14" x2="27" y2="39" elevation="1"/>
+  <line stroke="blue" x1="23" y1="20" x2="25" y2="20"/>
+  <line stroke="red" x1="15" y1="27" x2="16" y2="28"/>
+  <line stroke="blue" x1="3" y1="31" x2="4" y2="32"/>
+  <line stroke="red" x1="3" y1="31" x2="13" y2="31" elevation="1"/>
+  <line stroke="red" x1="3" y1="31" x2="3" y2="41" elevation="1"/>
+  <line stroke="red" x1="28" y1="15" x2="29" y2="16"/>
+  <line stroke="blue" x1="28" y1="15" x2="38" y2="15" elevation="0"/>
+  <line stroke="blue" x1="28" y1="15" x2="28" y2="40" elevation="0"/>
+  <line stroke="red" x1="25" y1="20" x2="26" y2="20"/>
+  <line stroke="red" x1="4" y1="32" x2="5" y2="33"/>
+  <line stroke="blue" x1="4" y1="32" x2="12" y2="32" elevation="0"/>
+  <line stroke="blue" x1="4" y1="32" x2="4" y2="40" elevation="0"/>
+  <line stroke="red" x1="16" y1="28" x2="15" y2="29"/>
+  <line stroke="blue" x1="15" y1="29" x2="14" y2="30"/>
+  <line stroke="red" x1="15" y1="29" x2="15" y2="43" elevation="1"/>
+  <line stroke="red" x1="17" y1="28" x2="18" y2="28"/>
+  <line stroke="blue" x1="26" y1="20" x2="27" y2="20"/>
+  <line stroke="red" x1="33" y1="0" x2="33" y2="1"/>
+  <line stroke="blue" x1="33" y1="1" x2="33" y2="2"/>
+  <line stroke="red" x1="33" y1="2" x2="33" y2="3"/>
+  <line stroke="red" x1="14" y1="30" x2="13" y2="31"/>
+  <line stroke="blue" x1="14" y1="30" x2="14" y2="42" elevation="0"/>
+  <line stroke="blue" x1="29" y1="16" x2="30" y2="17"/>
+  <line stroke="red" x1="29" y1="16" x2="37" y2="16" elevation="1"/>
+  <line stroke="red" x1="29" y1="16" x2="29" y2="41" elevation="1"/>
+  <line stroke="blue" x1="33" y1="3" x2="33" y2="4"/>
+  <line stroke="red" x1="33" y1="4" x2="33" y2="5"/>
+  <line stroke="blue" x1="18" y1="28" x2="19" y2="28"/>
+  <line stroke="blue" x1="5" y1="33" x2="6" y2="34"/>
+  <line stroke="red" x1="5" y1="33" x2="11" y2="33" elevation="1"/>
+  <line stroke="red" x1="5" y1="33" x2="5" y2="39" elevation="1"/>
+  <line stroke="blue" x1="33" y1="5" x2="33" y2="6"/>
+  <line stroke="red" x1="33" y1="6" x2="33" y2="7"/>
+  <line stroke="red" x1="33" y1="6" x2="34" y2="5"/>
+  <line stroke="blue" x1="33" y1="6" x2="34" y2="6"/>
+  <line stroke="red" x1="33" y1="6" x2="34" y2="7"/>
+  <line stroke="red" x1="27" y1="20" x2="28" y2="20"/>
+  <line stroke="blue" x1="13" y1="31" x2="12" y2="32"/>
+  <line stroke="red" x1="13" y1="31" x2="13" y2="41" elevation="1"/>
+  <line stroke="blue" x1="33" y1="7" x2="33" y2="8"/>
+  <line stroke="red" x1="19" y1="28" x2="20" y2="28"/>
+  <line stroke="red" x1="33" y1="8" x2="33" y2="9"/>
+  <line stroke="red" x1="12" y1="32" x2="11" y2="33"/>
+  <line stroke="blue" x1="12" y1="32" x2="12" y2="40" elevation="0"/>
+  <line stroke="blue" x1="33" y1="9" x2="33" y2="10"/>
+  <line stroke="blue" x1="34" y1="5" x2="34" y2="7" elevation="0"/>
+  <line stroke="blue" x1="34" y1="5" x2="35" y2="4"/>
+  <line stroke="blue" x1="20" y1="28" x2="21" y2="28"/>
+  <line stroke="blue" x1="28" y1="20" x2="29" y2="20"/>
+  <line stroke="red" x1="30" y1="17" x2="31" y2="18"/>
+  <line stroke="blue" x1="30" y1="17" x2="36" y2="17" elevation="0"/>
+  <line stroke="blue" x1="30" y1="17" x2="30" y2="42" elevation="0"/>
+  <line stroke="red" x1="33" y1="10" x2="33" y2="11"/>
+  <line stroke="blue" x1="6" y1="34" x2="10" y2="34" elevation="0"/>
+  <line stroke="red" x1="6" y1="34" x2="7" y2="35"/>
+  <line stroke="blue" x1="6" y1="34" x2="6" y2="38" elevation="0"/>
+  <line stroke="red" x1="34" y1="6" x2="35" y2="6"/>
+  <line stroke="blue" x1="34" y1="7" x2="35" y2="8"/>
+  <line stroke="blue" x1="11" y1="33" x2="10" y2="34"/>
+  <line stroke="red" x1="11" y1="33" x2="11" y2="39" elevation="1"/>
+  <line stroke="blue" x1="33" y1="11" x2="33" y2="12"/>
+  <line stroke="red" x1="21" y1="28" x2="22" y2="28"/>
+  <line stroke="red" x1="33" y1="12" x2="33" y2="13"/>
+  <line stroke="red" x1="35" y1="4" x2="35" y2="8" elevation="1"/>
+  <line stroke="red" x1="35" y1="4" x2="36" y2="3"/>
+  <line stroke="red" x1="29" y1="20" x2="30" y2="20"/>
+  <line stroke="red" x1="10" y1="34" x2="9" y2="35"/>
+  <line stroke="blue" x1="10" y1="34" x2="10" y2="38" elevation="0"/>
+  <line stroke="blue" x1="33" y1="13" x2="33" y2="14"/>
+  <line stroke="blue" x1="35" y1="6" x2="36" y2="6"/>
+  <line stroke="blue" x1="22" y1="28" x2="23" y2="28"/>
+  <line stroke="red" x1="7" y1="35" x2="9" y2="35" elevation="1"/>
+  <line stroke="red" x1="7" y1="35" x2="7" y2="37" elevation="1"/>
+  <line stroke="blue" x1="7" y1="35" x2="9" y2="37"/>
+  <line stroke="blue" x1="31" y1="18" x2="32" y2="19"/>
+  <line stroke="red" x1="31" y1="18" x2="35" y2="18" elevation="1"/>
+  <line stroke="red" x1="31" y1="18" x2="31" y2="43" elevation="1"/>
+  <line stroke="red" x1="33" y1="14" x2="33" y2="15"/>
+  <line stroke="red" x1="35" y1="8" x2="36" y2="9"/>
+  <line stroke="blue" x1="0" y1="36" x2="1" y2="36"/>
+  <line stroke="red" x1="1" y1="36" x2="2" y2="36"/>
+  <line stroke="blue" x1="2" y1="36" x2="3" y2="36"/>
+  <line stroke="blue" x1="30" y1="20" x2="31" y2="20"/>
+  <line stroke="red" x1="3" y1="36" x2="4" y2="36"/>
+  <line stroke="blue" x1="36" y1="3" x2="37" y2="2"/>
+  <line stroke="blue" x1="36" y1="3" x2="36" y2="9" elevation="0"/>
+  <line stroke="blue" x1="9" y1="35" x2="7" y2="37"/>
+  <line stroke="red" x1="9" y1="35" x2="9" y2="37" elevation="1"/>
+  <line stroke="blue" x1="4" y1="36" x2="5" y2="36"/>
+  <line stroke="red" x1="23" y1="28" x2="25" y2="28"/>
+  <line stroke="blue" x1="33" y1="15" x2="33" y2="16"/>
+  <line stroke="red" x1="5" y1="36" x2="6" y2="36"/>
+  <line stroke="blue" x1="6" y1="36" x2="7" y2="36"/>
+  <line stroke="red" x1="36" y1="6" x2="37" y2="6"/>
+  <line stroke="red" x1="7" y1="36" x2="8" y2="36"/>
+  <line stroke="red" x1="33" y1="16" x2="33" y2="17"/>
+  <line stroke="red" x1="8" y1="36" x2="8" y2="37"/>
+  <line stroke="red" x1="31" y1="20" x2="32" y2="20"/>
+  <line stroke="blue" x1="37" y1="0" x2="37" y2="1"/>
+  <line stroke="red" x1="37" y1="1" x2="37" y2="10"/>
+  <line stroke="blue" x1="37" y1="2" x2="38" y2="3"/>
+  <line stroke="blue" x1="36" y1="9" x2="37" y2="10"/>
+  <line stroke="blue" x1="33" y1="17" x2="33" y2="18"/>
+  <line stroke="red" x1="32" y1="19" x2="33" y2="20"/>
+  <line stroke="blue" x1="32" y1="19" x2="34" y2="19" elevation="0"/>
+  <line stroke="blue" x1="32" y1="19" x2="32" y2="44" elevation="0"/>
+  <line stroke="blue" x1="37" y1="6" x2="38" y2="6"/>
+  <line stroke="blue" x1="25" y1="28" x2="26" y2="28"/>
+  <line stroke="red" x1="33" y1="18" x2="33" y2="19"/>
+  <line stroke="red" x1="7" y1="37" x2="9" y2="37" elevation="1"/>
+  <line stroke="red" x1="7" y1="37" x2="6" y2="38"/>
+  <line stroke="blue" x1="32" y1="20" x2="33" y2="20"/>
+  <line stroke="blue" x1="8" y1="37" x2="8" y2="38"/>
+  <line stroke="red" x1="9" y1="37" x2="10" y2="38"/>
+  <line stroke="blue" x1="33" y1="19" x2="33" y2="20"/>
+  <line stroke="red" x1="38" y1="3" x2="39" y2="4"/>
+  <line stroke="blue" x1="38" y1="3" x2="38" y2="11" elevation="0"/>
+  <line stroke="blue" x1="38" y1="3" x2="44" y2="3" elevation="0"/>
+  <line stroke="red" x1="26" y1="28" x2="27" y2="28"/>
+  <line stroke="red" x1="37" y1="10" x2="38" y2="11"/>
+  <line stroke="blue" x1="6" y1="38" x2="10" y2="38" elevation="0"/>
+  <line stroke="blue" x1="6" y1="38" x2="5" y2="39"/>
+  <line stroke="red" x1="38" y1="6" x2="39" y2="6"/>
+  <line stroke="red" x1="33" y1="20" x2="34" y2="19"/>
+  <line stroke="red" x1="33" y1="20" x2="34" y2="20"/>
+  <line stroke="red" x1="33" y1="20" x2="33" y2="27" elevation="1"/>
+  <line stroke="red" x1="8" y1="38" x2="8" y2="39"/>
+  <line stroke="blue" x1="27" y1="28" x2="28" y2="28"/>
+  <line stroke="blue" x1="34" y1="19" x2="35" y2="18"/>
+  <line stroke="blue" x1="34" y1="19" x2="34" y2="26" elevation="0"/>
+  <line stroke="blue" x1="39" y1="4" x2="40" y2="5"/>
+  <line stroke="red" x1="39" y1="4" x2="39" y2="12" elevation="1"/>
+  <line stroke="red" x1="39" y1="4" x2="43" y2="4" elevation="1"/>
+  <line stroke="blue" x1="10" y1="38" x2="11" y2="39"/>
+  <line stroke="red" x1="5" y1="39" x2="4" y2="40"/>
+  <line stroke="red" x1="5" y1="39" x2="11" y2="39" elevation="1"/>
+  <line stroke="red" x1="35" y1="18" x2="36" y2="17"/>
+  <line stroke="red" x1="35" y1="18" x2="35" y2="25" elevation="1"/>
+  <line stroke="blue" x1="34" y1="20" x2="35" y2="20"/>
+  <line stroke="blue" x1="39" y1="6" x2="40" y2="6"/>
+  <line stroke="blue" x1="38" y1="11" x2="39" y2="12"/>
+  <line stroke="red" x1="28" y1="28" x2="29" y2="28"/>
+  <line stroke="blue" x1="8" y1="39" x2="8" y2="40"/>
+  <line stroke="blue" x1="36" y1="17" x2="37" y2="16"/>
+  <line stroke="blue" x1="36" y1="17" x2="36" y2="24" elevation="0"/>
+  <line stroke="blue" x1="4" y1="40" x2="3" y2="41"/>
+  <line stroke="blue" x1="4" y1="40" x2="12" y2="40" elevation="0"/>
+  <line stroke="blue" x1="29" y1="28" x2="30" y2="28"/>
+  <line stroke="red" x1="35" y1="20" x2="36" y2="20"/>
+  <line stroke="red" x1="37" y1="16" x2="38" y2="15"/>
+  <line stroke="red" x1="37" y1="16" x2="37" y2="23" elevation="1"/>
+  <line stroke="red" x1="40" y1="5" x2="41" y2="6"/>
+  <line stroke="blue" x1="40" y1="5" x2="42" y2="5" elevation="0"/>
+  <line stroke="blue" x1="40" y1="5" x2="40" y2="21" elevation="0"/>
+  <line stroke="red" x1="40" y1="6" x2="41" y2="6"/>
+  <line stroke="red" x1="11" y1="39" x2="12" y2="40"/>
+  <line stroke="red" x1="8" y1="40" x2="8" y2="41"/>
+  <line stroke="red" x1="39" y1="12" x2="40" y2="13"/>
+  <line stroke="blue" x1="38" y1="15" x2="39" y2="14"/>
+  <line stroke="blue" x1="38" y1="15" x2="38" y2="22" elevation="0"/>
+  <line stroke="red" x1="41" y1="0" x2="41" y2="1"/>
+  <line stroke="blue" x1="41" y1="1" x2="41" y2="2"/>
+  <line stroke="red" x1="30" y1="28" x2="31" y2="28"/>
+  <line stroke="red" x1="41" y1="2" x2="41" y2="3"/>
+  <line stroke="red" x1="3" y1="41" x2="2" y2="42"/>
+  <line stroke="red" x1="3" y1="41" x2="13" y2="41" elevation="1"/>
+  <line stroke="blue" x1="41" y1="3" x2="41" y2="4"/>
+  <line stroke="blue" x1="36" y1="20" x2="37" y2="20"/>
+  <line stroke="red" x1="41" y1="4" x2="41" y2="5"/>
+  <line stroke="blue" x1="41" y1="5" x2="41" y2="6"/>
+  <line stroke="red" x1="39" y1="14" x2="40" y2="13"/>
+  <line stroke="red" x1="39" y1="14" x2="39" y2="21" elevation="1"/>
+  <line stroke="red" x1="41" y1="6" x2="42" y2="5"/>
+  <line stroke="blue" x1="41" y1="6" x2="42" y2="6"/>
+  <line stroke="red" x1="41" y1="6" x2="41" y2="21" elevation="1"/>
+  <line stroke="blue" x1="12" y1="40" x2="13" y2="41"/>
+  <line stroke="blue" x1="8" y1="41" x2="8" y2="42"/>
+  <line stroke="blue" x1="31" y1="28" x2="48" y2="28"/>
+  <line stroke="blue" x1="2" y1="42" x2="1" y2="43"/>
+  <line stroke="blue" x1="2" y1="42" x2="14" y2="42" elevation="0"/>
+  <line stroke="red" x1="37" y1="20" x2="38" y2="20"/>
+  <line stroke="blue" x1="42" y1="5" x2="43" y2="4"/>
+  <line stroke="blue" x1="42" y1="5" x2="42" y2="22" elevation="0"/>
+  <line stroke="red" x1="42" y1="6" x2="43" y2="6"/>
+  <line stroke="red" x1="32" y1="28" x2="33" y2="27"/>
+  <line stroke="red" x1="32" y1="28" x2="33" y2="29"/>
+  <line stroke="blue" x1="33" y1="27" x2="34" y2="26"/>
+  <line stroke="red" x1="33" y1="27" x2="47" y2="27" elevation="1"/>
+  <line stroke="red" x1="8" y1="42" x2="8" y2="43"/>
+  <line stroke="red" x1="34" y1="26" x2="35" y2="25"/>
+  <line stroke="blue" x1="34" y1="26" x2="46" y2="26" elevation="0"/>
+  <line stroke="blue" x1="38" y1="20" x2="39" y2="20"/>
+  <line stroke="red" x1="1" y1="43" x2="0" y2="44"/>
+  <line stroke="red" x1="1" y1="43" x2="15" y2="43" elevation="1"/>
+  <line stroke="red" x1="13" y1="41" x2="14" y2="42"/>
+  <line stroke="blue" x1="35" y1="25" x2="36" y2="24"/>
+  <line stroke="red" x1="35" y1="25" x2="45" y2="25" elevation="1"/>
+  <line stroke="red" x1="41" y1="13" x2="42" y2="13"/>
+  <line stroke="red" x1="43" y1="4" x2="44" y2="3"/>
+  <line stroke="red" x1="43" y1="4" x2="43" y2="23" elevation="1"/>
+  <line stroke="red" x1="36" y1="24" x2="37" y2="23"/>
+  <line stroke="blue" x1="36" y1="24" x2="44" y2="24" elevation="0"/>
+  <line stroke="blue" x1="43" y1="6" x2="44" y2="6"/>
+  <line stroke="red" x1="23" y1="37" x2="22" y2="38"/>
+  <line stroke="red" x1="23" y1="37" x2="25" y2="37" elevation="1"/>
+  <line stroke="blue" x1="23" y1="37" x2="24" y2="38"/>
+  <line stroke="blue" x1="37" y1="23" x2="38" y2="22"/>
+  <line stroke="red" x1="37" y1="23" x2="43" y2="23" elevation="1"/>
+  <line stroke="blue" x1="8" y1="43" x2="8" y2="44"/>
+  <line stroke="red" x1="39" y1="20" x2="41" y2="20"/>
+  <line stroke="blue" x1="22" y1="38" x2="21" y2="39"/>
+  <line stroke="blue" x1="22" y1="38" x2="26" y2="38" elevation="0"/>
+  <line stroke="red" x1="38" y1="22" x2="39" y2="21"/>
+  <line stroke="blue" x1="38" y1="22" x2="42" y2="22" elevation="0"/>
+  <line stroke="blue" x1="33" y1="29" x2="34" y2="30"/>
+  <line stroke="red" x1="33" y1="29" x2="33" y2="43" elevation="1"/>
+  <line stroke="red" x1="33" y1="29" x2="47" y2="29" elevation="1"/>
+  <line stroke="blue" x1="42" y1="13" x2="43" y2="13"/>
+  <line stroke="red" x1="0" y1="44" x2="1" y2="45"/>
+  <line stroke="blue" x1="0" y1="44" x2="48" y2="44" elevation="0"/>
+  <line stroke="blue" x1="44" y1="3" x2="45" y2="2"/>
+  <line stroke="blue" x1="44" y1="3" x2="44" y2="24" elevation="0"/>
+  <line stroke="blue" x1="14" y1="42" x2="15" y2="43"/>
+  <line stroke="red" x1="21" y1="39" x2="20" y2="40"/>
+  <line stroke="red" x1="21" y1="39" x2="27" y2="39" elevation="1"/>
+  <line stroke="blue" x1="39" y1="21" x2="40" y2="20"/>
+  <line stroke="red" x1="39" y1="21" x2="41" y2="21" elevation="1"/>
+  <line stroke="red" x1="44" y1="6" x2="45" y2="6"/>
+  <line stroke="blue" x1="25" y1="37" x2="24" y2="38"/>
+  <line stroke="red" x1="25" y1="37" x2="26" y2="38"/>
+  <line stroke="red" x1="8" y1="44" x2="8" y2="45"/>
+  <line stroke="blue" x1="20" y1="40" x2="19" y2="41"/>
+  <line stroke="blue" x1="20" y1="40" x2="28" y2="40" elevation="0"/>
+  <line stroke="blue" x1="40" y1="20" x2="41" y2="21"/>
+  <line stroke="red" x1="43" y1="13" x2="44" y2="13"/>
+  <line stroke="red" x1="24" y1="38" x2="23" y2="39"/>
+  <line stroke="red" x1="24" y1="38" x2="25" y2="39"/>
+  <line stroke="blue" x1="1" y1="45" x2="2" y2="46"/>
+  <line stroke="red" x1="1" y1="45" x2="15" y2="45" elevation="1"/>
+  <line stroke="red" x1="1" y1="45" x2="1" y2="48" elevation="1"/>
+  <line stroke="red" x1="45" y1="2" x2="46" y2="1"/>
+  <line stroke="red" x1="45" y1="2" x2="45" y2="25" elevation="1"/>
+  <line stroke="red" x1="40" y1="21" x2="40" y2="22"/>
+  <line stroke="red" x1="19" y1="41" x2="18" y2="42"/>
+  <line stroke="red" x1="19" y1="41" x2="29" y2="41" elevation="1"/>
+  <line stroke="blue" x1="23" y1="39" x2="24" y2="40"/>
+  <line stroke="red" x1="34" y1="30" x2="35" y2="31"/>
+  <line stroke="blue" x1="34" y1="30" x2="34" y2="42" elevation="0"/>
+  <line stroke="blue" x1="34" y1="30" x2="46" y2="30" elevation="0"/>
+  <line stroke="blue" x1="45" y1="6" x2="46" y2="6"/>
+  <line stroke="red" x1="15" y1="43" x2="17" y2="45"/>
+  <line stroke="blue" x1="41" y1="20" x2="42" y2="20"/>
+  <line stroke="blue" x1="40" y1="22" x2="40" y2="23"/>
+  <line stroke="blue" x1="18" y1="42" x2="17" y2="43"/>
+  <line stroke="blue" x1="18" y1="42" x2="30" y2="42" elevation="0"/>
+  <line stroke="blue" x1="8" y1="45" x2="8" y2="46"/>
+  <line stroke="blue" x1="44" y1="13" x2="45" y2="13"/>
+  <line stroke="blue" x1="46" y1="1" x2="47" y2="0"/>
+  <line stroke="blue" x1="46" y1="1" x2="46" y2="26" elevation="0"/>
+  <line stroke="blue" x1="26" y1="38" x2="27" y2="39"/>
+  <line stroke="red" x1="2" y1="46" x2="3" y2="47"/>
+  <line stroke="blue" x1="2" y1="46" x2="2" y2="48" elevation="0"/>
+  <line stroke="blue" x1="2" y1="46" x2="14" y2="46" elevation="0"/>
+  <line stroke="red" x1="41" y1="21" x2="42" y2="22"/>
+  <line stroke="red" x1="40" y1="23" x2="40" y2="24"/>
+  <line stroke="red" x1="17" y1="43" x2="15" y2="45"/>
+  <line stroke="red" x1="17" y1="43" x2="31" y2="43" elevation="1"/>
+  <line stroke="blue" x1="25" y1="39" x2="24" y2="40"/>
+  <line stroke="red" x1="46" y1="6" x2="47" y2="6"/>
+  <line stroke="red" x1="42" y1="20" x2="43" y2="20"/>
+  <line stroke="red" x1="24" y1="40" x2="23" y2="41"/>
+  <line stroke="red" x1="24" y1="40" x2="25" y2="41"/>
+  <line stroke="blue" x1="40" y1="24" x2="40" y2="25"/>
+  <line stroke="red" x1="8" y1="46" x2="8" y2="47"/>
+  <line stroke="blue" x1="35" y1="31" x2="36" y2="32"/>
+  <line stroke="red" x1="35" y1="31" x2="35" y2="41" elevation="1"/>
+  <line stroke="red" x1="35" y1="31" x2="45" y2="31" elevation="1"/>
+  <line stroke="red" x1="16" y1="44" x2="16" y2="48" elevation="0"/>
+  <line stroke="red" x1="45" y1="13" x2="46" y2="13"/>
+  <line stroke="blue" x1="47" y1="0" x2="48" y2="1"/>
+  <line stroke="red" x1="47" y1="0" x2="47" y2="27" elevation="1"/>
+  <line stroke="blue" x1="23" y1="41" x2="24" y2="42"/>
+  <line stroke="red" x1="3" y1="47" x2="3" y2="48" elevation="1"/>
+  <line stroke="blue" x1="3" y1="47" x2="4" y2="48"/>
+  <line stroke="red" x1="3" y1="47" x2="13" y2="47" elevation="1"/>
+  <line stroke="red" x1="40" y1="25" x2="40" y2="26"/>
+  <line stroke="blue" x1="47" y1="6" x2="48" y2="6"/>
+  <line stroke="blue" x1="42" y1="22" x2="43" y2="23"/>
+  <line stroke="blue" x1="43" y1="20" x2="44" y2="20"/>
+  <line stroke="blue" x1="15" y1="45" x2="14" y2="46"/>
+  <line stroke="red" x1="15" y1="45" x2="15" y2="48" elevation="1"/>
+  <line stroke="red" x1="27" y1="39" x2="28" y2="40"/>
+  <line stroke="blue" x1="8" y1="47" x2="8" y2="48"/>
+  <line stroke="blue" x1="40" y1="26" x2="40" y2="27"/>
+  <line stroke="blue" x1="46" y1="13" x2="47" y2="13"/>
+  <line stroke="blue" x1="25" y1="41" x2="24" y2="42"/>
+  <line stroke="red" x1="14" y1="46" x2="13" y2="47"/>
+  <line stroke="blue" x1="14" y1="46" x2="14" y2="48" elevation="0"/>
+  <line stroke="blue" x1="17" y1="45" x2="18" y2="46"/>
+  <line stroke="red" x1="17" y1="45" x2="17" y2="48" elevation="1"/>
+  <line stroke="red" x1="17" y1="45" x2="31" y2="45" elevation="1"/>
+  <line stroke="red" x1="36" y1="32" x2="37" y2="33"/>
+  <line stroke="blue" x1="36" y1="32" x2="36" y2="40" elevation="0"/>
+  <line stroke="blue" x1="36" y1="32" x2="44" y2="32" elevation="0"/>
+  <line stroke="red" x1="40" y1="27" x2="40" y2="28"/>
+  <line stroke="red" x1="44" y1="20" x2="45" y2="20"/>
+  <line stroke="red" x1="24" y1="42" x2="23" y2="43"/>
+  <line stroke="red" x1="24" y1="42" x2="25" y2="43"/>
+  <line stroke="blue" x1="13" y1="47" x2="12" y2="48"/>
+  <line stroke="red" x1="13" y1="47" x2="13" y2="48" elevation="1"/>
+  <line stroke="blue" x1="23" y1="43" x2="24" y2="44"/>
+  <line stroke="red" x1="43" y1="23" x2="44" y2="24"/>
+  <line stroke="red" x1="47" y1="13" x2="48" y2="13"/>
+  <line stroke="blue" x1="28" y1="40" x2="29" y2="41"/>
+  <line stroke="blue" x1="40" y1="28" x2="40" y2="29"/>
+  <line stroke="blue" x1="45" y1="20" x2="46" y2="20"/>
+  <line stroke="red" x1="18" y1="46" x2="19" y2="47"/>
+  <line stroke="blue" x1="18" y1="46" x2="18" y2="48" elevation="0"/>
+  <line stroke="blue" x1="18" y1="46" x2="30" y2="46" elevation="0"/>
+  <line stroke="red" x1="40" y1="29" x2="40" y2="30"/>
+  <line stroke="blue" x1="37" y1="33" x2="38" y2="34"/>
+  <line stroke="red" x1="37" y1="33" x2="37" y2="39" elevation="1"/>
+  <line stroke="red" x1="37" y1="33" x2="43" y2="33" elevation="1"/>
+  <line stroke="blue" x1="25" y1="43" x2="24" y2="44"/>
+  <line stroke="blue" x1="40" y1="30" x2="40" y2="31"/>
+  <line stroke="red" x1="24" y1="44" x2="23" y2="45"/>
+  <line stroke="red" x1="24" y1="44" x2="25" y2="45"/>
+  <line stroke="blue" x1="44" y1="24" x2="45" y2="25"/>
+  <line stroke="red" x1="46" y1="20" x2="47" y2="20"/>
+  <line stroke="red" x1="29" y1="41" x2="30" y2="42"/>
+  <line stroke="blue" x1="23" y1="45" x2="24" y2="46"/>
+  <line stroke="red" x1="40" y1="31" x2="40" y2="32"/>
+  <line stroke="red" x1="19" y1="47" x2="19" y2="48" elevation="1"/>
+  <line stroke="blue" x1="19" y1="47" x2="20" y2="48"/>
+  <line stroke="red" x1="19" y1="47" x2="29" y2="47" elevation="1"/>
+  <line stroke="red" x1="38" y1="34" x2="39" y2="35"/>
+  <line stroke="blue" x1="38" y1="34" x2="38" y2="38" elevation="0"/>
+  <line stroke="blue" x1="38" y1="34" x2="42" y2="34" elevation="0"/>
+  <line stroke="blue" x1="47" y1="20" x2="48" y2="20"/>
+  <line stroke="blue" x1="40" y1="32" x2="40" y2="33"/>
+  <line stroke="blue" x1="25" y1="45" x2="24" y2="46"/>
+  <line stroke="red" x1="45" y1="25" x2="46" y2="26"/>
+  <line stroke="blue" x1="30" y1="42" x2="31" y2="43"/>
+  <line stroke="red" x1="40" y1="33" x2="40" y2="34"/>
+  <line stroke="red" x1="24" y1="46" x2="23" y2="47"/>
+  <line stroke="red" x1="24" y1="46" x2="25" y2="47"/>
+  <line stroke="blue" x1="23" y1="47" x2="24" y2="48"/>
+  <line stroke="red" x1="39" y1="35" x2="39" y2="37" elevation="1"/>
+  <line stroke="red" x1="39" y1="35" x2="41" y2="35" elevation="1"/>
+  <line stroke="blue" x1="39" y1="35" x2="41" y2="37"/>
+  <line stroke="blue" x1="40" y1="34" x2="40" y2="35"/>
+  <line stroke="blue" x1="46" y1="26" x2="47" y2="27"/>
+  <line stroke="red" x1="31" y1="43" x2="33" y2="45"/>
+  <line stroke="red" x1="40" y1="35" x2="40" y2="37"/>
+  <line stroke="blue" x1="25" y1="47" x2="24" y2="48"/>
+  <line stroke="blue" x1="38" y1="38" x2="37" y2="39"/>
+  <line stroke="red" x1="38" y1="38" x2="39" y2="37"/>
+  <line stroke="blue" x1="38" y1="38" x2="42" y2="38" elevation="0"/>
+  <line stroke="red" x1="37" y1="39" x2="36" y2="40"/>
+  <line stroke="red" x1="37" y1="39" x2="43" y2="39" elevation="1"/>
+  <line stroke="blue" x1="39" y1="37" x2="41" y2="35"/>
+  <line stroke="red" x1="39" y1="37" x2="41" y2="37" elevation="1"/>
+  <line stroke="blue" x1="36" y1="40" x2="35" y2="41"/>
+  <line stroke="blue" x1="36" y1="40" x2="44" y2="40" elevation="0"/>
+  <line stroke="red" x1="35" y1="41" x2="34" y2="42"/>
+  <line stroke="red" x1="35" y1="41" x2="45" y2="41" elevation="1"/>
+  <line stroke="red" x1="41" y1="35" x2="42" y2="34"/>
+  <line stroke="red" x1="41" y1="35" x2="41" y2="37" elevation="1"/>
+  <line stroke="blue" x1="34" y1="42" x2="33" y2="43"/>
+  <line stroke="blue" x1="34" y1="42" x2="46" y2="42" elevation="0"/>
+  <line stroke="blue" x1="42" y1="34" x2="43" y2="33"/>
+  <line stroke="blue" x1="42" y1="34" x2="42" y2="38" elevation="0"/>
+  <line stroke="red" x1="33" y1="43" x2="31" y2="45"/>
+  <line stroke="red" x1="33" y1="43" x2="47" y2="43" elevation="1"/>
+  <line stroke="red" x1="43" y1="33" x2="44" y2="32"/>
+  <line stroke="red" x1="43" y1="33" x2="43" y2="39" elevation="1"/>
+  <line stroke="red" x1="47" y1="27" x2="48" y2="28"/>
+  <line stroke="red" x1="32" y1="44" x2="32" y2="48" elevation="0"/>
+  <line stroke="blue" x1="44" y1="32" x2="45" y2="31"/>
+  <line stroke="blue" x1="44" y1="32" x2="44" y2="40" elevation="0"/>
+  <line stroke="blue" x1="40" y1="37" x2="40" y2="38"/>
+  <line stroke="blue" x1="31" y1="45" x2="30" y2="46"/>
+  <line stroke="red" x1="31" y1="45" x2="31" y2="48" elevation="1"/>
+  <line stroke="red" x1="45" y1="31" x2="46" y2="30"/>
+  <line stroke="red" x1="45" y1="31" x2="45" y2="41" elevation="1"/>
+  <line stroke="red" x1="30" y1="46" x2="29" y2="47"/>
+  <line stroke="blue" x1="30" y1="46" x2="30" y2="48" elevation="0"/>
+  <line stroke="blue" x1="46" y1="30" x2="47" y2="29"/>
+  <line stroke="blue" x1="46" y1="30" x2="46" y2="42" elevation="0"/>
+  <line stroke="red" x1="40" y1="38" x2="40" y2="39"/>
+  <line stroke="blue" x1="29" y1="47" x2="28" y2="48"/>
+  <line stroke="red" x1="29" y1="47" x2="29" y2="48" elevation="1"/>
+  <line stroke="red" x1="41" y1="37" x2="42" y2="38"/>
+  <line stroke="red" x1="47" y1="29" x2="48" y2="28"/>
+  <line stroke="red" x1="47" y1="29" x2="47" y2="43" elevation="1"/>
+  <line stroke="blue" x1="33" y1="45" x2="34" y2="46"/>
+  <line stroke="red" x1="33" y1="45" x2="33" y2="48" elevation="1"/>
+  <line stroke="red" x1="33" y1="45" x2="47" y2="45" elevation="1"/>
+  <line stroke="blue" x1="40" y1="39" x2="40" y2="40"/>
+  <line stroke="red" x1="40" y1="40" x2="40" y2="41"/>
+  <line stroke="blue" x1="42" y1="38" x2="43" y2="39"/>
+  <line stroke="red" x1="34" y1="46" x2="35" y2="47"/>
+  <line stroke="blue" x1="34" y1="46" x2="34" y2="48" elevation="0"/>
+  <line stroke="blue" x1="34" y1="46" x2="46" y2="46" elevation="0"/>
+  <line stroke="blue" x1="40" y1="41" x2="40" y2="42"/>
+  <line stroke="red" x1="40" y1="42" x2="40" y2="43"/>
+  <line stroke="red" x1="43" y1="39" x2="44" y2="40"/>
+  <line stroke="red" x1="35" y1="47" x2="35" y2="48" elevation="1"/>
+  <line stroke="blue" x1="35" y1="47" x2="36" y2="48"/>
+  <line stroke="red" x1="35" y1="47" x2="45" y2="47" elevation="1"/>
+  <line stroke="blue" x1="40" y1="43" x2="40" y2="44"/>
+  <line stroke="red" x1="40" y1="44" x2="40" y2="45"/>
+  <line stroke="blue" x1="44" y1="40" x2="45" y2="41"/>
+  <line stroke="blue" x1="40" y1="45" x2="40" y2="46"/>
+  <line stroke="red" x1="45" y1="41" x2="46" y2="42"/>
+  <line stroke="red" x1="40" y1="46" x2="40" y2="47"/>
+  <line stroke="blue" x1="40" y1="47" x2="40" y2="48"/>
+  <line stroke="blue" x1="46" y1="42" x2="47" y2="43"/>
+  <line stroke="red" x1="47" y1="43" x2="48" y2="44"/>
+  <line stroke="red" x1="46" y1="46" x2="45" y2="47"/>
+  <line stroke="blue" x1="46" y1="46" x2="47" y2="45"/>
+  <line stroke="blue" x1="46" y1="46" x2="46" y2="48" elevation="0"/>
+  <line stroke="blue" x1="45" y1="47" x2="44" y2="48"/>
+  <line stroke="red" x1="45" y1="47" x2="45" y2="48" elevation="1"/>
+  <line stroke="red" x1="47" y1="45" x2="48" y2="44"/>
+  <line stroke="red" x1="47" y1="45" x2="47" y2="48" elevation="1"/>
+</svg>

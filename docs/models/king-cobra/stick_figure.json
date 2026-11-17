@@ -1,0 +1,195 @@
+{
+  "name": "Indian spectacled cobra rearing from 3D spiral coil with broad flared hood, open jaws and forked tongue",
+  "category": "reptiles",
+  "color_top": [
+    62,
+    44,
+    28
+  ],
+  "color_bottom": [
+    230,
+    202,
+    145
+  ],
+  "complexity": 3,
+  "root": "snout_head",
+  "children": [
+    {
+      "name": "snout_head",
+      "start": "j_crown",
+      "end": "j_snout",
+      "azimuth_angle": 0,
+      "elevation_angle": 6,
+      "length": 4,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "lower_jaw",
+      "start": "j_crown",
+      "end": "j_jaw",
+      "azimuth_angle": 0,
+      "elevation_angle": -34,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "tongue_L",
+      "start": "j_crown",
+      "end": "j_tl",
+      "azimuth_angle": 11.0,
+      "elevation_angle": -16.0,
+      "length": 5,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "tongue_R",
+      "start": "j_crown",
+      "end": "j_tr",
+      "azimuth_angle": -11.0,
+      "elevation_angle": -16.0,
+      "length": 5,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "hood_L",
+      "start": "j_crown",
+      "end": "j_hood_L",
+      "azimuth_angle": 118.0,
+      "elevation_angle": -65.0,
+      "length": 6,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "hood_R",
+      "start": "j_crown",
+      "end": "j_hood_R",
+      "azimuth_angle": -118.0,
+      "elevation_angle": -65.0,
+      "length": 6,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "hood_center",
+      "start": "j_crown",
+      "end": "j_hood_base",
+      "azimuth_angle": 180,
+      "elevation_angle": -78,
+      "length": 6,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck_rise",
+      "start": "j_hood_base",
+      "end": "j_neck_base",
+      "azimuth_angle": 180,
+      "elevation_angle": -66,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "coil_1",
+      "start": "j_neck_base",
+      "end": "j_c1",
+      "azimuth_angle": 165,
+      "elevation_angle": -18,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "coil_2",
+      "start": "j_c1",
+      "end": "j_c2",
+      "azimuth_angle": 85,
+      "elevation_angle": 0,
+      "length": 4,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "coil_3",
+      "start": "j_c2",
+      "end": "j_c3",
+      "azimuth_angle": 8,
+      "elevation_angle": 0,
+      "length": 4,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "coil_4",
+      "start": "j_c3",
+      "end": "j_c4",
+      "azimuth_angle": -68,
+      "elevation_angle": 0,
+      "length": 5,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "coil_5",
+      "start": "j_c4",
+      "end": "j_c5",
+      "azimuth_angle": -142,
+      "elevation_angle": 0,
+      "length": 4,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_tip",
+      "start": "j_c5",
+      "end": "j_tail_tip",
+      "azimuth_angle": 152,
+      "elevation_angle": 16,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      22,
+      16,
+      13
+    ],
+    [
+      -20,
+      20,
+      15
+    ],
+    [
+      20,
+      -20,
+      15
+    ],
+    [
+      -20,
+      -20,
+      15
+    ],
+    [
+      0,
+      25,
+      10
+    ],
+    [
+      0,
+      -25,
+      10
+    ],
+    [
+      25,
+      0,
+      10
+    ]
+  ]
+}
