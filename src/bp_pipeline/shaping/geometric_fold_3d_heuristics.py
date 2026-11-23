@@ -21,7 +21,7 @@ import dataclasses
 import logging
 import math
 import typing
-from typing import TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -61,6 +61,8 @@ class Heuristics3DShapingResult(TypedDict):
   shaping_creases: Sequence[crease_utils.Crease]
   # Mapping from element name to a list of element shaping results.
   detailed_shaping_info: dict[str, list[ElementShapingResult]]
+  # Mapping from unshaped element name to a structured reason string.
+  skip_reasons: NotRequired[dict[str, str]]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -111,6 +113,8 @@ class GeometricFolding3DHParams:
     direction_graph_data: Optional precomputed graph data of the unshaped base
       for `measure_base_directions` (defaults to the graph of `base_cp`). Use
       when flat pre-shaping has already altered flap boundaries.
+    use_tree_root: When True, anchor 3D shaping postures and reference frames at
+      `stick_figure.root` rather than the heuristic root selector.
   """
 
   shape_subset: Sequence[str] | None = None
@@ -126,6 +130,7 @@ class GeometricFolding3DHParams:
   measure_base_directions: bool = True
   priority: Sequence[str] = ()
   direction_graph_data: geometric_simple_fold.GraphData | None = None
+  use_tree_root: bool = False
 
 
 def _get_rotation_axis_slope(
@@ -1045,7 +1050,9 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
           ):
             symmetric_partners[s.name] = s.symmetric_stick_name
 
-  root = heuristics.get_first_stick_for_shaping(stick_figure)
+  root = heuristics.get_first_stick_for_shaping(
+      stick_figure, use_tree_root=hparams.use_tree_root
+  )
   stick_figure = dataclasses.replace(stick_figure, root=root.name)
   stick_figure = stick_figure.align_root_stick_to_target_azimuth_elevation()
 
@@ -1059,6 +1066,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
         shape_with_unmerged_tree=shape_with_unmerged_tree,
         merge_converter=merge_converter,
         sacrificial_flaps=sacrificial_flaps,
+        use_tree_root=hparams.use_tree_root,
     )
   shaping_flaps = shaping_data['shaping_flaps']
   shaping_rivers = shaping_data['shaping_rivers']
@@ -1123,17 +1131,29 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
         hparams.direction_graph_data or graph_data,
     )
 
+  def _diagnose_empty_info(info: heuristics_3d.SimpleFoldInfo) -> str:
+    direction = info.rotation_axis_local
+    if abs(direction[1]) >= 0.1:
+      slope = _get_rotation_axis_slope(direction)
+      if slope is None:
+        return 'vertical_axis'
+      if abs(slope) > hparams.default_inscribe_hparams.max_slope_thresh:
+        return 'steep_slope'
+    return 'no_creases'
+
   def _shape_elements_once(
       simple_fold_info_dict: dict[str, Sequence[heuristics_3d.SimpleFoldInfo]],
   ) -> tuple[
       list[crease_utils.Crease],
       dict[str, list[ElementShapingResult]],
       list[tuple[object, ...]],
+      dict[str, str],
   ]:
     accepted_creases_by_element: dict[str, list[crease_utils.Crease]] = {}
     discarded_partners: dict[str, str] = {}
     detailed_shaping_info: dict[str, list[ElementShapingResult]] = {}
     pending_warnings: list[tuple[object, ...]] = []
+    skip_reasons: dict[str, str] = {}
     current_cp = base_cp
 
     def _rollback_partner(partner_name: str, failed_name: str) -> None:
@@ -1141,6 +1161,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
       if partner_name in accepted_creases_by_element:
         accepted_creases_by_element.pop(partner_name, None)
         detailed_shaping_info.pop(partner_name, None)
+        skip_reasons[partner_name] = 'flat_foldability'
         pending_warnings.append((
             (
                 'Flat foldability violation detected after shaping element: %s.'
@@ -1163,6 +1184,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
               surviving[kept_name] = kept_creases
             else:
               detailed_shaping_info.pop(kept_name, None)
+              skip_reasons[kept_name] = 'flat_foldability'
           accepted_creases_by_element = surviving
         current_cp = rebuilt_cp
       else:
@@ -1170,6 +1192,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
 
     for element in elements:
       if element.name in discarded_partners:
+        skip_reasons[element.name] = 'flat_foldability'
         pending_warnings.append((
             (
                 'Flat foldability violation detected after shaping element: %s.'
@@ -1181,14 +1204,22 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
         ))
         continue
       if element.name not in simple_fold_info_dict:
+        skip_reasons[element.name] = 'no_fold_info'
         pending_warnings.append((
             'No simple fold info found for element: %s. Skipping.',
             element.name,
         ))
         continue
       simple_fold_infos = simple_fold_info_dict[element.name]
+      if not simple_fold_infos or all(
+          math.isclose(info.rotation_angle, 0.0, abs_tol=1e-3)
+          for info in simple_fold_infos
+      ):
+        skip_reasons[element.name] = 'zero_angle'
+        continue
       element_creases: list[crease_utils.Crease] = []
       element_had_assertion_failure = False
+      empty_reason = 'no_creases'
       extra_limiting_rectangles = [
           shaping_flaps_by_name[sac_flap].to_legacy_rectangle()
           for sac_flap in flap_info_dict[element.name].sacrificial_flaps
@@ -1218,12 +1249,15 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
               extra_limiting_rectangles=extra_limiting_rectangles,
               root_flipped=root_flipped,
           )
+          if not element_output['shaping_creases']:
+            empty_reason = _diagnose_empty_info(simple_fold_info)
           element_creases.extend(element_output['shaping_creases'])
           if element.name not in detailed_shaping_info:
             detailed_shaping_info[element.name] = []
           detailed_shaping_info[element.name].append(element_output)
         except AssertionError as e:
           element_had_assertion_failure = True
+          skip_reasons[element.name] = 'geometry_failed'
           pending_warnings.append((
               (
                   'Failed to shape element: %s with 3D geometric folding'
@@ -1244,6 +1278,8 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
         ))
         _rollback_partner(symmetric_partners[element.name], element.name)
         continue
+      if not element_creases:
+        skip_reasons.setdefault(element.name, empty_reason)
       if hparams.check_ff_violations and element_creases:
         updated_cp = current_cp.update_with_shaping_creases(element_creases)
         if not updated_cp.local_flat_foldability():
@@ -1255,6 +1291,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
               element.name,
           ))
           detailed_shaping_info.pop(element.name, None)
+          skip_reasons[element.name] = 'flat_foldability'
           if element.name in symmetric_partners:
             _rollback_partner(symmetric_partners[element.name], element.name)
           continue
@@ -1264,7 +1301,12 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
     shaping_creases: list[crease_utils.Crease] = []
     for creases in accepted_creases_by_element.values():
       shaping_creases.extend(creases)
-    return shaping_creases, detailed_shaping_info, pending_warnings
+    return (
+        shaping_creases,
+        detailed_shaping_info,
+        pending_warnings,
+        skip_reasons,
+    )
 
   unrotated: set[str] = set()
   if hparams.shape_subset is not None:
@@ -1274,6 +1316,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
   shaping_creases: list[crease_utils.Crease] = []
   detailed_shaping_info: dict[str, list[ElementShapingResult]] = {}
   warnings_to_log: list[tuple[object, ...]] = []
+  skip_reasons: dict[str, str] = {}
   for _ in range(_MAX_UNROTATED_PASSES):
     simple_fold_info_dict = heuristics_3d.get_flap_post_dict(
         stick_figure,
@@ -1284,8 +1327,9 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
         max_slope_thresh=hparams.default_inscribe_hparams.max_slope_thresh,
         unrotated=unrotated,
         base_signs=base_signs,
+        use_tree_root=hparams.use_tree_root,
     )
-    shaping_creases, detailed_shaping_info, warnings_to_log = (
+    shaping_creases, detailed_shaping_info, warnings_to_log, skip_reasons = (
         _shape_elements_once(simple_fold_info_dict)
     )
     shaped = {
@@ -1320,6 +1364,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
   return Heuristics3DShapingResult(
       shaping_creases=shaping_creases,
       detailed_shaping_info=detailed_shaping_info,
+      skip_reasons=skip_reasons,
   )
 
 

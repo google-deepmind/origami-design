@@ -227,7 +227,7 @@ def _round_vec(values: np.ndarray, digits: int = 5) -> list[float]:
   return [round(float(v), digits) for v in values]
 
 
-def _infer_symmetric_stick(name: str, all_names: set[str]) -> str | None:
+def infer_symmetric_stick(name: str, all_names: set[str]) -> str | None:
   """Infers a bilateral mirror name when `symmetric_stick_name` is unset."""
   if 'major_' in name or 'minor_' in name:
     return None
@@ -243,6 +243,9 @@ def _infer_symmetric_stick(name: str, all_names: set[str]) -> str | None:
     ):
       return cand
   return None
+
+
+_infer_symmetric_stick = infer_symmetric_stick
 
 
 def _root_normal(
@@ -1215,6 +1218,7 @@ __all__ = [
     'combine',
     'components',
     'evaluate_fidelity',
+    'infer_symmetric_stick',
     'measure',
     'pose_gate',
     'score_model',

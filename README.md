@@ -37,10 +37,14 @@ patterns (`CreasePattern`) and shaded 3D shaped models:
     -   Pure-Python global flat-foldability verification ported from Jason S.
         Ku's MIT-licensed
         [Flat-Folder](https://github.com/origamimagiro/flat-folder) software.
-6.  **3D Origami Shaping & Bundled Agent Design Skills**:
-    -   3D geometric simple-fold and river-bend shaping (`bp.shape()`), pure
-        BFS dihedral hinge-mesh folding (`bp.build_folded_mesh_3d()`), and
-        auto-discovered AI agent design skills under `.agents/skills/`.
+6.  **3D Origami Shaping, Pose Recipes & Bundled Agent Design Skills**:
+    -   3D geometric simple-fold and river-bend shaping (`bp.shape()`),
+        closed-loop automatic posing (`bp.pose()`, `bp.PoseConfig`), a 19-tool
+        stateful shaping toolbox (`bp.ShapingState`, `bp.apply_shaping_tool()`,
+        `bp.list_shaping_tools()`), quantitative pose fidelity scoring
+        (`bp.evaluate_fidelity()`), dihedral hinge-mesh folding
+        (`bp.build_folded_mesh_3d()`), and portable AI agent skills under
+        `.agents/`.
 
 ### Pipeline Architecture & Immutable Bus
 
@@ -122,6 +126,11 @@ bp-pipeline cat -o outputs/cat
 bp-pipeline .agents/skills/stick-figure-design/examples/cat.json \
   -o outputs/cat \
   --check-symmetry
+
+# Automatically pose, refine with actuators, and score fidelity:
+bp-pipeline pose outputs/cat --mode auto
+bp-pipeline actuate outputs/cat --tool fold_spine --args '{"fold_percent": 0.65}'
+bp-pipeline score outputs/cat
 ```
 
 When `-o` / `--output-dir` is provided, `bp-pipeline` automatically renders the
@@ -188,10 +197,13 @@ for candidate in bp.solve(packed):
 
 ### 4. Bundled Agent Design Skills
 
-Four portable AI agent skills are bundled directly under `.agents/skills/` for
-automatic discovery in coding-agent harnesses when working inside a repository
-checkout:
+Five portable AI agent skills and an end-to-end designer agent definition are
+bundled under `.agents/` for automatic discovery in coding-agent harnesses when
+working inside a repository checkout:
 
+-   [`.agents/agents/origami-designer.md`](.agents/agents/origami-designer.md):
+    End-to-end workflow orchestrating design, solving, posing, actuation, and
+    critique.
 -   [`.agents/skills/stick-figure-design/SKILL.md`](.agents/skills/stick-figure-design/SKILL.md):
     Canonical workflow, schema, archetypes, and `bp-pipeline` CLI
     validation/rendering loop for authoring 3D `StickFigure` JSONs.
@@ -202,8 +214,12 @@ checkout:
     Reference for `bp.prepare`, `bp.pack`, `bp.solve_best`,
     `bp.solve_sweep`, `bp.fold`, and export formats.
 -   [`.agents/skills/origami-shaping/SKILL.md`](.agents/skills/origami-shaping/SKILL.md): Guide
-    to 3D limb subdivision, automated crease-pattern shaping (`bp.shape`), and
-    interpreting `report.json` diagnostics.
+    to automatic posing (`bp.pose`), the 19-tool shaping toolbox
+    (`bp.apply_shaping_tool`), one-shot shaping (`bp.shape`), and 3D limb
+    subdivision (with `references/tools.md` and `references/pose.md`).
+-   [`.agents/skills/origami-critique/SKILL.md`](.agents/skills/origami-critique/SKILL.md):
+    Quantitative 0–10 fidelity rubric (`bp.evaluate_fidelity`), hard fold/pose
+    gates, and visual turnaround defect remedies.
 
 ## Evaluation on Large Stick-Figure Benchmarks
 

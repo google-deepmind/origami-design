@@ -464,6 +464,86 @@ class ApiTest(parameterized.TestCase):
       with self.assertRaises(ValueError):
         shaped.flat_fold()
 
+  def test_shaping_toolbox_and_pose_public_api(self):
+    tools = bp.list_shaping_tools()
+    self.assertLen(tools, 19)
+    for name in (
+        'simple_fold',
+        'crimp_fold',
+        'reverse_fold',
+        'clip_pattern_fold',
+        'fan_out_fold',
+        'squash_fold',
+        'open_flap',
+        'fold_spine',
+        'rotation_3d',
+        'bend_to_direction',
+        'apply_symmetric',
+        'tree_edit',
+    ):
+      self.assertIn(name, tools)
+    self.assertIn('auto', bp.PoseMode.__args__)
+
+    res = bp.fold('human', preset='demo')
+    posed = bp.pose(
+        res.solved,
+        bp.PoseConfig(mode='search', feedback_rounds=1),
+        mode='figure',
+    )
+    self.assertIsInstance(posed, bp.ShapedCreasePattern)
+    self.assertEqual(posed.strategy, bp.ShapingStrategy.POSE_FIGURE)
+    self.assertTrue(posed.creases.local_flat_foldability())
+    self.assertEqual(posed.diagnostics['mode'], 'figure')
+    self.assertIn('fidelity', posed.diagnostics)
+
+    decoded_posed = bp.loads(bp.dumps(posed))
+    self.assertIsInstance(decoded_posed, bp.ShapedCreasePattern)
+    self.assertEqual(decoded_posed.strategy, bp.ShapingStrategy.POSE_FIGURE)
+    self.assertEqual(decoded_posed.diagnostics['mode'], 'figure')
+
+    greedy_posed = bp.pose(res.solved, mode='greedy')
+    self.assertEqual(greedy_posed.strategy, bp.ShapingStrategy.POSE_GREEDY)
+    self.assertTrue(greedy_posed.creases.local_flat_foldability())
+
+    with self.assertRaises(ValueError):
+      bp.PoseConfig(mode='invalid')  # type: ignore[arg-type]
+
+    tool_cfg = bp.ShapingToolConfig(fan_out_time_budget_s=10.0)
+    state = bp.ShapingState.from_solved(res.solved, config=tool_cfg)
+    probe_out = bp.probe_shaping(state, ['left_leg'])
+    self.assertIn('left_leg', probe_out)
+    self.assertEmpty(state.history)
+
+    mid_state, first_result = bp.apply_shaping_tool(
+        state,
+        'simple_fold',
+        {'element_name': 'left_leg', 'angle': 45.0, 'depth': 0.0},
+    )
+    self.assertIsInstance(first_result, bp.ShapingToolResult)
+    self.assertTrue(first_result.ok)
+    self.assertEmpty(state.history)
+
+    next_state, results = bp.apply_shaping_tools(
+        mid_state,
+        [
+            {
+                'name': 'simple_fold',
+                'arguments': {
+                    'element_name': 'right_leg',
+                    'angle': -45.0,
+                    'depth': 0.0,
+                },
+            },
+        ],
+    )
+    self.assertLen(results, 1)
+    self.assertTrue(results[0].ok)
+    self.assertLen(next_state.history, 2)
+    shaped = next_state.to_shaped(res.solved)
+    self.assertEqual(shaped.strategy, bp.ShapingStrategy.TOOLBOX)
+    fidelity = bp.evaluate_fidelity(shaped)
+    self.assertTrue(fidelity.clean_gate.locally_flat_foldable)
+
 
 if __name__ == '__main__':
   absltest.main()

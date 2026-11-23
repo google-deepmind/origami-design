@@ -510,6 +510,7 @@ def get_flap_post_dict(
     max_slope_thresh: float = MAX_SLOPE,
     unrotated: Collection[str] = (),
     base_signs: Mapping[str, float] | None = None,
+    use_tree_root: bool = False,
 ) -> dict[str, Sequence[SimpleFoldInfo]]:
   """Generates a dictionary of SimpleFoldInfo for each stick in the stick figure.
 
@@ -537,12 +538,14 @@ def get_flap_post_dict(
     base_signs: Optional mapping of stick names to measured directions on the
       flat-folded base (`> 0` along the root stick, `< 0` against it; `0` is
       ignored). Overrides hinge-inferred initial directions when provided.
+    use_tree_root: Whether to anchor posture propagation at `stickfigure.root`.
 
   Returns:
     A dictionary mapping stick names to their corresponding SimpleFoldInfo.
   """
-  # NOTE: Add a test for this.
-  first_stick_name = heuristics.get_first_stick_for_shaping(stickfigure).name
+  first_stick_name = heuristics.get_first_stick_for_shaping(
+      stickfigure, use_tree_root=use_tree_root
+  ).name
   # Initialize the first root flap posture matrix
   flap_posture_dict = {
       first_stick_name: [

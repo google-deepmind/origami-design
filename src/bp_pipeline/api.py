@@ -38,6 +38,8 @@ from .packing import config as packing_config_lib
 from .packing import stacking as stacking_lib
 from .shaping import fidelity as fidelity_lib
 from .shaping import heuristics_3d
+from .shaping import recipes as recipes_lib
+from .shaping import toolbox as toolbox_lib
 from .solving import hinges as hinge_utils
 from .stick_figures import stick as stick_lib
 from .stick_figures import stick_figure as stick_figure_lib
@@ -94,8 +96,17 @@ FoldedModel = fold_3d_lib.FoldedModel
 FidelityConfig = fidelity_lib.FidelityConfig
 FidelityReport = fidelity_lib.FidelityReport
 fold_3d = fold_3d_lib.fold_3d
+PoseConfig = recipes_lib.PoseConfig
+PoseMode = recipes_lib.PoseMode
+ShapingState = toolbox_lib.ShapingState
+ShapingToolConfig = toolbox_lib.ToolConfig
+ShapingToolResult = toolbox_lib.ToolResult
+apply_shaping_tool = toolbox_lib.apply_tool
+apply_shaping_tools = toolbox_lib.apply_tools
 build_folded_mesh_3d = render_3d.build_folded_mesh_3d
 evaluate_fidelity = fidelity_lib.evaluate_fidelity
+list_shaping_tools = toolbox_lib.list_shaping_tools
+probe_shaping = toolbox_lib.probe
 mesh_to_fold_dict = render_3d.mesh_to_fold_dict
 save_3d_turnaround = render_3d.save_3d_turnaround
 save_stick_figure_views = render_summary.save_stick_figure_views
@@ -1111,6 +1122,52 @@ def _shape_candidates(
   return shaped_list
 
 
+def pose(
+    solved: bus.SolvedCreasePattern,
+    config: recipes_lib.PoseConfig | None = None,
+    *,
+    mode: recipes_lib.PoseMode | None = None,
+    narrow: bool | None = None,
+    time_budget_s: float | None = None,
+    feedback_rounds: int | None = None,
+) -> bus.ShapedCreasePattern:
+  """Poses a flat-foldable `SolvedCreasePattern` with the 3-D actuator recipes.
+
+  Recipe diagnostics (fidelity score, gate status, crease counts, and runtime)
+  are attached to the returned `ShapedCreasePattern.diagnostics` mapping.
+
+  Args:
+    solved: Flat-foldable solved base crease pattern.
+    config: Optional `PoseConfig` specifying the pose strategy and budgets.
+    mode: Optional override for `config.mode` (`'auto'`, `'figure'`, `'search'`,
+      or `'greedy'`).
+    narrow: Optional override for `config.narrow`.
+    time_budget_s: Optional override for `config.time_budget_s`.
+    feedback_rounds: Optional override for `config.feedback_rounds`.
+
+  Returns:
+    An immutable `ShapedCreasePattern` with strategy `pose_<mode>`.
+  """
+  _require_solved_cp(solved)
+  effective = config if config is not None else recipes_lib.PoseConfig()
+  overrides: dict[str, Any] = {}
+  if mode is not None:
+    overrides['mode'] = mode
+  if narrow is not None:
+    overrides['narrow'] = narrow
+  if time_budget_s is not None:
+    overrides['time_budget_s'] = time_budget_s
+  if feedback_rounds is not None:
+    overrides['feedback_rounds'] = feedback_rounds
+  if overrides:
+    effective = dataclasses.replace(effective, **overrides)
+  try:
+    shaped, _ = recipes_lib.pose_solved(solved, effective)
+  except (ValueError, RuntimeError) as err:
+    raise ShapingFailedError(str(err), errors=(str(err),)) from err
+  return shaped
+
+
 __all__ = (
     'BpsImportResult',
     'Crease',
@@ -1132,11 +1189,16 @@ __all__ = (
     'PackingTaskConfig',
     'PipelineConfig',
     'PipelineResult',
+    'PoseConfig',
+    'PoseMode',
     'Preset',
     'ShapedCreasePattern',
     'ShapingFailedError',
+    'ShapingState',
     'ShapingStrategy',
     'ShapingTaskConfig',
+    'ShapingToolConfig',
+    'ShapingToolResult',
     'SolvedCreasePattern',
     'SolverConfig',
     'SolvingFailedError',
@@ -1146,6 +1208,8 @@ __all__ = (
     'SolveStage',
     'Stick',
     'StickFigure',
+    'apply_shaping_tool',
+    'apply_shaping_tools',
     'build_folded_mesh_3d',
     'dumps',
     'evaluate_fidelity',
@@ -1158,11 +1222,14 @@ __all__ = (
     'list_examples',
     'load_example',
     'list_packers',
+    'list_shaping_tools',
     'list_solvers',
     'loads',
     'mesh_to_fold_dict',
     'pack',
+    'pose',
     'prepare',
+    'probe_shaping',
     'register_packer',
     'register_solver',
     'render_packed_overlay_svg',

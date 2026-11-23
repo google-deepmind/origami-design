@@ -35,6 +35,10 @@ from . import render_summary
 from . import timeout as bp_timeout
 from . import viz
 from .crease_pattern.parser import cp_format
+from .crease_pattern.parser import svg as svg_parser
+from .shaping import fidelity as fidelity_lib
+from .shaping import recipes as recipes_lib
+from .shaping import toolbox as toolbox_lib
 from .third_party.flat_folder import fold_cp
 from .stick_figures import graph_checks
 from .stick_figures import stick_figure as sf_lib
@@ -49,11 +53,7 @@ _SKIPPED_ELEMENT_RE = re.compile(
 )
 
 PipelineSource = (
-    Mapping[str, Any]
-    | sf_lib.StickFigure
-    | bus.DesignTree
-    | str
-    | pathlib.Path
+    Mapping[str, Any] | sf_lib.StickFigure | bus.DesignTree | str | pathlib.Path
 )
 
 
@@ -445,6 +445,9 @@ def run_pipeline(
       fold_path = out_dir / 'solved.fold'
       api.save_fold(solved, fold_path, title=tree.name)
       report['artifacts']['solved_fold'] = str(fold_path)
+      solved_bus_path = out_dir / 'solved_bus.json'
+      solved_bus_path.write_text(api.dumps(solved), encoding='utf-8')
+      report['artifacts']['solved_bus_json'] = str(solved_bus_path)
       if solved_ff and solved_ff.folded_state_svg:
         folded_svg_path = out_dir / 'solved_folded_state.svg'
         folded_svg_path.write_text(solved_ff.folded_state_svg, encoding='utf-8')
@@ -587,6 +590,13 @@ def _is_non_design_json_filename(filename: str) -> bool:
       or lower == 'report.json'
       or lower.endswith('_report.json')
       or lower.endswith('.report.json')
+      or lower in (
+          'shaping_state.json',
+          'shaping_context.json',
+          'shaping_history.json',
+          'pose_plan.json',
+      )
+      or lower.endswith('_bus.json')
       or lower.endswith('.bps.json')
       or lower.endswith('.metadata.json')
   )
@@ -599,6 +609,10 @@ def _build_argument_parser() -> argparse.ArgumentParser:
       description=(
           'Validate, pack, solve, 3D-shape, and render StickFigure origami'
           ' designs.'
+      ),
+      epilog=(
+          'Interactive shaping subcommands: '
+          'bp-pipeline {tools,probe,pose,actuate,score} TARGET [options].'
       ),
   )
   parser.add_argument(
@@ -732,10 +746,405 @@ def _build_argument_parser() -> argparse.ArgumentParser:
   return parser
 
 
+_SHAPING_SUBCOMMANDS = frozenset({'tools', 'probe', 'pose', 'actuate', 'score'})
+
+
+def _load_cli_shaping_state(
+    target: str,
+    *,
+    out_dir: pathlib.Path | None = None,
+    reset: bool = False,
+) -> tuple[
+    bus.SolvedCreasePattern, toolbox_lib.ShapingState, pathlib.Path | None
+]:
+  """Loads `(solved, state, out_dir)` for shaping CLI subcommands."""
+  cand = pathlib.Path(target)
+  effective_out = out_dir
+  solved: bus.SolvedCreasePattern | None = None
+  initial_pattern = None
+
+  if cand.is_dir():
+    if effective_out is None:
+      effective_out = cand
+    bus_file = cand / 'solved_bus.json'
+    bps_file = cand / 'layout.bps.json'
+    solving_svg = cand / 'solving_cp.svg'
+    if bus_file.is_file():
+      loaded = api.loads(bus_file.read_text(encoding='utf-8'))
+      if isinstance(loaded, bus.SolvedCreasePattern):
+        solved = loaded
+    elif bps_file.is_file():
+      imported = api.import_bps(bps_file)
+      if imported.packed is None:
+        raise ValueError(f'No packed layout found in {bps_file}.')
+      if solving_svg.is_file():
+        solving_grid = imported.packed.grid_size
+        rep_file = cand / 'report.json'
+        if rep_file.is_file():
+          rep_data = json.loads(rep_file.read_text(encoding='utf-8'))
+          solving_grid = int(
+              rep_data.get('solving', {}).get('grid_size') or solving_grid
+          )
+        cp = svg_parser.parse_svg(
+            solving_svg.read_text(encoding='utf-8'),
+            grid_size=solving_grid,
+        )
+        solved = bus.SolvedCreasePattern.from_crease_pattern(
+            cp,
+            packed=imported.packed,
+            central_crease_removed=(solving_grid < imported.packed.grid_size),
+        )
+      else:
+        solved = api.solve_best(imported.packed)
+    else:
+      raise FileNotFoundError(
+          f'Directory {cand} has neither solved_bus.json nor layout.bps.json.'
+      )
+
+    state_file = cand / 'shaping_state.json'
+    shaped_svg = cand / 'shaped_cp.svg'
+    backbone_svg = cand / 'flat_backbone.svg'
+    if not reset and state_file.is_file() and shaped_svg.is_file():
+      metadata = json.loads(state_file.read_text(encoding='utf-8'))
+      bb_text = (
+          backbone_svg.read_text(encoding='utf-8')
+          if metadata.get('has_flat_backbone') and backbone_svg.is_file()
+          else None
+      )
+      state = toolbox_lib.ShapingState.from_metadata_dict(
+          solved,
+          metadata,
+          pattern_svg=shaped_svg.read_text(encoding='utf-8'),
+          backbone_svg=bb_text,
+      )
+    elif not reset and shaped_svg.is_file():
+      pat = toolbox_lib.deserialize_pattern_svg(
+          shaped_svg.read_text(encoding='utf-8'), grid_size=-1
+      )
+      state = toolbox_lib.ShapingState.from_solved(solved, pattern=pat)
+    else:
+      state = toolbox_lib.ShapingState.from_solved(solved)
+    return solved, state, effective_out
+
+  if cand.is_file() and target.lower().endswith('.bps.json'):
+    imported = api.import_bps(cand)
+    if imported.packed is None:
+      raise ValueError(f'No packed layout found in {cand}.')
+    solved = api.solve_best(imported.packed)
+  elif cand.is_file() and target.lower().endswith('.json'):
+    raw_text = cand.read_text(encoding='utf-8')
+    raw_obj = json.loads(raw_text)
+    obj_type = raw_obj.get('type') if isinstance(raw_obj, dict) else None
+    if obj_type in (
+        'SolvedCreasePattern',
+        'ShapedCreasePattern',
+        'PipelineResult',
+    ):
+      loaded = api.loads(raw_text)
+      if isinstance(loaded, bus.PipelineResult):
+        solved = loaded.solved
+        if not reset and loaded.shaped is not None:
+          initial_pattern = loaded.shaped.creases
+      elif isinstance(loaded, bus.ShapedCreasePattern):
+        solved = loaded.solved
+        if not reset:
+          initial_pattern = loaded.creases
+      elif isinstance(loaded, bus.SolvedCreasePattern):
+        solved = loaded
+    else:
+      solved = api.fold(raw_obj, preset='demo', shape=False).solved
+  else:
+    solved = api.fold(target, preset='demo', shape=False).solved
+
+  if solved is None:
+    raise RuntimeError(f'Could not resolve a SolvedCreasePattern for {target}.')
+  state = toolbox_lib.ShapingState.from_solved(solved, pattern=initial_pattern)
+  if effective_out is not None:
+    effective_out.mkdir(parents=True, exist_ok=True)
+    (effective_out / 'solved_bus.json').write_text(
+        api.dumps(solved), encoding='utf-8'
+    )
+  return solved, state, effective_out
+
+
+def _save_cli_shaping_outputs(
+    out_dir: pathlib.Path,
+    solved: bus.SolvedCreasePattern,
+    state: toolbox_lib.ShapingState,
+    *,
+    strategy: bus.ShapingStrategy | str = bus.ShapingStrategy.TOOLBOX,
+    diagnostics: Mapping[str, Any] | None = None,
+    render_visuals: bool = True,
+) -> bus.ShapedCreasePattern:
+  """Persists shaped SVG/FOLD/3-D renders and compact state metadata."""
+  out_dir.mkdir(parents=True, exist_ok=True)
+  bus_path = out_dir / 'solved_bus.json'
+  if not bus_path.is_file():
+    bus_path.write_text(api.dumps(solved), encoding='utf-8')
+
+  shaped = state.to_shaped(solved, strategy=strategy, diagnostics=diagnostics)
+  (out_dir / 'shaped_cp.svg').write_text(
+      toolbox_lib.serialize_pattern_svg(state.pattern), encoding='utf-8'
+  )
+  api.save_fold(
+      shaped, out_dir / 'shaped.fold', title=f'{state.tree.name}_shaped'
+  )
+
+  backbone_path = out_dir / 'flat_backbone.svg'
+  if state.flat_backbone is not None:
+    backbone_path.write_text(
+        toolbox_lib.serialize_pattern_svg(state.flat_backbone),
+        encoding='utf-8',
+    )
+  elif backbone_path.is_file():
+    backbone_path.unlink()
+
+  (out_dir / 'shaping_state.json').write_text(
+      json.dumps(state.to_metadata_dict(), indent=2, default=str),
+      encoding='utf-8',
+  )
+  (out_dir / 'shaping_history.json').write_text(
+      toolbox_lib.history_json(state) + '\n', encoding='utf-8'
+  )
+
+  try:
+    mesh_3d = render_3d.build_folded_mesh_3d(shaped)
+    (out_dir / 'shaped_3d.fold').write_text(
+        json.dumps(mesh_3d.to_fold_dict(state.tree.name), indent=2),
+        encoding='utf-8',
+    )
+    if render_visuals:
+      render_3d.render_shaped_3d_turnaround_png(
+          out_dir / 'shaped_3d_views.png',
+          name=state.tree.name,
+          mesh=mesh_3d,
+          color_top=state.tree.color_top,
+      )
+  except (ImportError, OSError, RuntimeError, TypeError, ValueError) as err:
+    logging.warning('3D turnaround render skipped: %s', err)
+  return shaped
+
+
+def _parse_actuate_calls(args: argparse.Namespace) -> list[dict[str, Any]]:
+  """Parses `--tool`/`--args` or `--calls` into a list of tool call dicts."""
+  if args.tool:
+    parsed_args = json.loads(args.tool_args) if args.tool_args else {}
+    if not isinstance(parsed_args, dict):
+      raise ValueError('--args must decode to a JSON object.')
+    return [{'tool': args.tool, 'arguments': parsed_args}]
+  raw_calls = args.calls.strip()
+  if raw_calls.startswith('['):
+    calls_list = json.loads(raw_calls)
+  else:
+    calls_path = pathlib.Path(raw_calls.lstrip('@'))
+    calls_list = json.loads(calls_path.read_text(encoding='utf-8'))
+  if not isinstance(calls_list, list):
+    raise ValueError('--calls must decode to a JSON list of tool calls.')
+  return calls_list
+
+
+def _run_shaping_subcommand(argv: Sequence[str]) -> None:
+  """Dispatches `bp-pipeline tools|probe|pose|actuate|score` subcommands."""
+  subcmd = argv[0]
+  parser = argparse.ArgumentParser(prog=f'bp-pipeline {subcmd}')
+  parser.add_argument(
+      'target',
+      help=(
+          'Run directory, .bps.json, serialized stage .json, StickFigure .json,'
+          ' or built-in example name.'
+      ),
+  )
+  parser.add_argument(
+      '-o',
+      '--output-dir',
+      '--output_dir',
+      dest='output_dir',
+      default=None,
+      help='Directory to write shaping artifacts and reports.',
+  )
+  if subcmd == 'probe':
+    parser.add_argument(
+        '--elements',
+        default='',
+        help='Comma-separated element names to probe (default: all elements).',
+    )
+    parser.add_argument(
+        '--reset',
+        action='store_true',
+        help='Probe the unshaped solved base pattern.',
+    )
+  elif subcmd == 'pose':
+    parser.add_argument(
+        '--mode',
+        choices=('auto', 'figure', 'search', 'greedy'),
+        default='auto',
+        help='Pose recipe strategy (default: auto).',
+    )
+    parser.add_argument(
+        '--narrow',
+        action='store_true',
+        help='Narrow width-1 outer limbs and central tips when clean.',
+    )
+    parser.add_argument(
+        '--time-budget',
+        dest='time_budget',
+        type=float,
+        default=60.0,
+        help='Wall-clock time budget in seconds (default: 60).',
+    )
+    parser.add_argument(
+        '--feedback-rounds',
+        dest='feedback_rounds',
+        type=int,
+        default=2,
+        help='Closed-loop root-frame feedback rounds (default: 2).',
+    )
+    parser.add_argument(
+        '--no-viz',
+        dest='no_viz',
+        action='store_true',
+        help='Skip 3D PNG turnaround rendering.',
+    )
+  elif subcmd == 'actuate':
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        '--tool',
+        default=None,
+        help='Single shaping tool name to apply.',
+    )
+    group.add_argument(
+        '--calls',
+        default=None,
+        help=(
+            'JSON array or path to JSON file of [{"tool", "arguments"}] calls.'
+        ),
+    )
+    parser.add_argument(
+        '--args',
+        dest='tool_args',
+        default='{}',
+        help='JSON object of keyword arguments when using --tool.',
+    )
+    parser.add_argument(
+        '--reset',
+        action='store_true',
+        help='Start from the unshaped solved base pattern.',
+    )
+    parser.add_argument(
+        '--no-viz',
+        dest='no_viz',
+        action='store_true',
+        help='Skip 3D PNG turnaround rendering.',
+    )
+  elif subcmd == 'score':
+    parser.add_argument(
+        '--reset',
+        action='store_true',
+        help='Score the unshaped solved base pattern instead of shaped_cp.svg.',
+    )
+
+  args = parser.parse_args(list(argv[1:]))
+  out_arg = pathlib.Path(args.output_dir) if args.output_dir else None
+  reset_flag = bool(getattr(args, 'reset', False)) or subcmd == 'pose'
+
+  noise_filter = _IntermediatePackingNoiseFilter()
+  root_logger = logging.getLogger()
+  filtered_targets: list[logging.Filterer] = [
+      root_logger,
+      *root_logger.handlers,
+  ]
+  for log_target in filtered_targets:
+    log_target.addFilter(noise_filter)
+  try:
+    solved, state, out_dir = _load_cli_shaping_state(
+        args.target, out_dir=out_arg, reset=reset_flag
+    )
+
+    if subcmd == 'tools':
+      ctx: dict[str, Any] = toolbox_lib.describe(state)
+      try:
+        ctx['flap_orientation'] = toolbox_lib.flap_orientation_info(state)
+      except (ValueError, KeyError, AssertionError) as err:
+        ctx['flap_orientation'] = {'error': str(err)}
+      ctx['tools'] = list(toolbox_lib.TOOL_NAMES)
+      if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / 'shaping_context.json').write_text(
+            json.dumps(ctx, indent=2, default=str), encoding='utf-8'
+        )
+      print(json.dumps(ctx, indent=2, default=str))
+      return
+
+    if subcmd == 'probe':
+      elem_list = [e.strip() for e in args.elements.split(',') if e.strip()]
+      probe_rep = toolbox_lib.probe(state, elem_list or None)
+      if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / 'probe_report.json').write_text(
+            json.dumps(probe_rep, indent=2), encoding='utf-8'
+        )
+      print(json.dumps(probe_rep, indent=2))
+      return
+
+    if subcmd == 'pose':
+      cfg = recipes_lib.PoseConfig(
+          mode=args.mode,
+          narrow=args.narrow,
+          time_budget_s=args.time_budget,
+          feedback_rounds=args.feedback_rounds,
+      )
+      posed_state, pose_rep = recipes_lib.pose_state(state, cfg)
+      if out_dir is not None:
+        _save_cli_shaping_outputs(
+            out_dir,
+            solved,
+            posed_state,
+            strategy=bus.ShapingStrategy(f'pose_{cfg.mode}'),
+            diagnostics=pose_rep,
+            render_visuals=not args.no_viz,
+        )
+        (out_dir / 'pose_report.json').write_text(
+            json.dumps(pose_rep, indent=2, default=str), encoding='utf-8'
+        )
+      print(json.dumps(pose_rep, indent=2, default=str))
+      return
+
+    if subcmd == 'actuate':
+      calls_list = _parse_actuate_calls(args)
+      next_state, results = toolbox_lib.apply_tools(state, calls_list)
+      if out_dir is not None:
+        _save_cli_shaping_outputs(
+            out_dir, solved, next_state, render_visuals=not args.no_viz
+        )
+      out_list = [r.asdict() for r in results]
+      print(json.dumps(out_list, indent=2, default=str))
+      return
+
+    if subcmd == 'score':
+      shaped_target = state.to_shaped(solved)
+      fid_rep = fidelity_lib.evaluate_fidelity(
+          shaped_target, tree=state.tree
+      ).to_dict()
+      if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / 'fidelity_report.json').write_text(
+            json.dumps(fid_rep, indent=2, default=str), encoding='utf-8'
+        )
+      print(json.dumps(fid_rep, indent=2, default=str))
+      return
+  finally:
+    for log_target in filtered_targets:
+      log_target.removeFilter(noise_filter)
+
+
 def main(argv: Sequence[str] | None = None) -> None:
   """Entry point for the `bp-pipeline` CLI."""
+  effective_argv = list(sys.argv[1:] if argv is None else argv)
+  if effective_argv and effective_argv[0] in _SHAPING_SUBCOMMANDS:
+    _run_shaping_subcommand(effective_argv)
+    return
   parser = _build_argument_parser()
-  args = parser.parse_args(argv)
+  args = parser.parse_args(effective_argv)
 
   if args.list_examples:
     for example_name in api.list_examples():

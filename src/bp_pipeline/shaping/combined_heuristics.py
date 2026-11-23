@@ -255,6 +255,7 @@ def shape_cp_with_combined_heuristics(
         central_crease_removed=central_crease_removed,
         shape_with_unmerged_tree=shape_with_unmerged_tree,
         merge_converter=merge_converter,
+        use_tree_root=hparams.geometric_fold_hparams.use_tree_root,
     )
 
   narrowed_parents, narrowed_children, flap_strategies = compute_narrowed_flaps(

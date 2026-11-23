@@ -91,10 +91,15 @@ class FoldState(enum.Enum):
   REFERENCE = 'reference'
 
 
-def get_first_stick_for_shaping(tree: sf.StickFigure) -> stick_lib.Stick:
+def get_first_stick_for_shaping(
+    tree: sf.StickFigure,
+    *,
+    use_tree_root: bool = False,
+) -> stick_lib.Stick:
   """Chooses a parent stick for shaping.
 
-  The parent stick is chosen based on the following ordered heuristics:
+  The parent stick is chosen based on the following ordered heuristics unless
+  `use_tree_root` is True:
   1. The stick on the symmetry axis.
   2. The stick with joints that require the most packing space.
   3. The stick with the largest degree.
@@ -102,10 +107,14 @@ def get_first_stick_for_shaping(tree: sf.StickFigure) -> stick_lib.Stick:
 
   Args:
     tree: The stick figure to choose a parent stick for.
+    use_tree_root: When True, return `tree[tree.root]` directly so angles are
+      measured in the stick figure's declared root frame.
 
   Returns:
     The chosen parent stick.
   """
+  if use_tree_root and tree.root and tree.root in tree:
+    return tree[tree.root]
   unmerged_tree = tree
   tree, merged_stick_name_dict = tree.merge_linear_chains()
 
@@ -177,17 +186,20 @@ def get_first_stick_for_shaping(tree: sf.StickFigure) -> stick_lib.Stick:
 
 def shaping_angles(
     tree: sf.StickFigure,
+    *,
+    use_tree_root: bool = False,
 ) -> tuple[stick_lib.Stick, dict[str, tuple[str | None, float, float]]]:
   """Chooses a parent stick and calculates all angles relative to it.
 
   Args:
     tree: The stick figure to calculate angles for.
+    use_tree_root: Whether to use `tree[tree.root]` as the parent stick.
 
   Returns:
     A tuple of the parent stick and a dictionary mapping stick names to a
     tuple of (parent stick name, relative azimuth, relative elevation).
   """
-  parent_stick = get_first_stick_for_shaping(tree)
+  parent_stick = get_first_stick_for_shaping(tree, use_tree_root=use_tree_root)
   relative_angles = relative_angles_from_stick(tree, parent_stick)
   return parent_stick, relative_angles
 
@@ -443,6 +455,8 @@ def convert_stick_figure_to_node_dict(
     hinge_info_list: list[types.HingeInfo],
     root_direction_follow_stick_figure_root: bool,
     sacrificial_flaps_by_base_flap: Mapping[str, Collection[str]] | None = None,
+    *,
+    use_tree_root: bool = False,
 ) -> tuple[Node, dict[str, Node]]:
   """Converts a StickFigure graph into a tree of Nodes and a lookup dictionary.
 
@@ -454,13 +468,16 @@ def convert_stick_figure_to_node_dict(
       the negative-y direction of the stick figure.
     sacrificial_flaps_by_base_flap: A dictionary mapping base flaps to their
       sacrificial flaps.
+    use_tree_root: Whether to anchor the node tree at `stick_figure.root`.
 
   Returns:
       A tuple containing:
       - The root Node of the tree.
       - A dictionary mapping all node names to their Node objects.
   """
-  root_stick, relative_angles = shaping_angles(stick_figure)
+  root_stick, relative_angles = shaping_angles(
+      stick_figure, use_tree_root=use_tree_root
+  )
   root_stick_name = root_stick.name
 
   # Reconstruct the tree structure from the relative angles.
@@ -740,6 +757,8 @@ def get_flap_info_dict_with_hinge_info(
     hinge_info_list: list[types.HingeInfo],
     root_direction_follow_stick_figure_root: bool,
     sacrificial_flaps_by_base_flap: Mapping[str, Collection[str]] | None = None,
+    *,
+    use_tree_root: bool = False,
 ) -> dict[str, Node]:
   """Gets the flap info in the stick figure with hinge info list input.
 
@@ -759,6 +778,7 @@ def get_flap_info_dict_with_hinge_info(
       follows the stick figure's root direction.
     sacrificial_flaps_by_base_flap: A dictionary mapping base flap names to a
       list of sacrificial flap names.
+    use_tree_root: Whether to anchor the node tree at `stick_figure.root`.
 
   Returns:
     A dictionary mapping stick names to their Node info.
@@ -768,6 +788,7 @@ def get_flap_info_dict_with_hinge_info(
       hinge_info_list,
       root_direction_follow_stick_figure_root,
       sacrificial_flaps_by_base_flap,
+      use_tree_root=use_tree_root,
   )
   root_stick_name = root_node.name
 
@@ -1031,6 +1052,8 @@ def get_flap_info_dict_for_unmerged_stick_figure(
     node_dict: dict[str, Node],
     root_direction_follow_stick_figure_root: bool,
     sacrificial_flaps_by_base_flap: Mapping[str, Sequence[str]] | None = None,
+    *,
+    use_tree_root: bool = False,
 ) -> dict[str, Node]:
   """Gets the flap info in the unmerged stick figure.
 
@@ -1057,6 +1080,8 @@ def get_flap_info_dict_for_unmerged_stick_figure(
     sacrificial_flaps_by_base_flap: A mapping from base (merged) flap name to
       sacrificial flap names. Keys are automatically translated to unmerged
       names.
+    use_tree_root: Whether to anchor the node tree at
+      `unmerged_stick_figure.root`.
 
   Returns:
     The node dictionary for the unmerged stick figure.
@@ -1072,6 +1097,7 @@ def get_flap_info_dict_for_unmerged_stick_figure(
       hinge_info_list,
       root_direction_follow_stick_figure_root,
       unmerged_sac_flaps,
+      use_tree_root=use_tree_root,
   )
 
   # Add unsplit sticks to merged_stick_name_dict
@@ -1169,6 +1195,8 @@ def compute_root_stick_direction_follow_stick_figure_root(
     stick_figure: sf.StickFigure,
     flaps: list[shaping_elements.ShapingFlap],
     rivers: list[shaping_elements.ShapingRiver],
+    *,
+    use_tree_root: bool = False,
 ) -> bool:
   """Computes if the root stick direction follows the stick figure's root direction.
 
@@ -1182,13 +1210,16 @@ def compute_root_stick_direction_follow_stick_figure_root(
     stick_figure: The stick figure.
     flaps: The list of shaping flaps.
     rivers: The list of shaping rivers.
+    use_tree_root: Whether to look up `stick_figure.root` directly.
 
   Returns:
     A boolean indicating if the root stick direction follows the stick figure's
     root direction.
   """
   # Step 1: Get the root element.
-  root_stick = get_first_stick_for_shaping(stick_figure)
+  root_stick = get_first_stick_for_shaping(
+      stick_figure, use_tree_root=use_tree_root
+  )
   root_element = shaping_elements.get_element_by_name(
       root_stick.name, flaps, rivers
   )

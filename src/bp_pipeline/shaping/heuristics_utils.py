@@ -209,10 +209,14 @@ def get_outer_bank_indices(
     stick_figure: sf_utils.StickFigure,
     shaping_flaps: list[shaping_elements.ShapingFlap],
     shaping_rivers: list[shaping_elements.ShapingRiver],
+    *,
+    use_tree_root: bool = False,
 ) -> dict[str, shaping_types.BankIndex]:
   """Maps each river name to its outer bank index (`'FIRST'` or `'SECOND'`)."""
   outer_banks: dict[str, shaping_types.BankIndex] = {}
-  root_name = heuristics.get_first_stick_for_shaping(stick_figure).name
+  root_name = heuristics.get_first_stick_for_shaping(
+      stick_figure, use_tree_root=use_tree_root
+  ).name
   for river in shaping_rivers:
     try:
       bank = river.get_outer_bank_index(
@@ -257,6 +261,8 @@ def _rename_elements_for_merge_converter(
 def _order_chains_from_root(
     unmerged_sf: sf_utils.StickFigure,
     merged_chains: Mapping[str, Sequence[str]],
+    *,
+    use_tree_root: bool = False,
 ) -> dict[str, list[str]]:
   """Orders each merged linear chain from proximal (near root) to distal."""
   sub_to_merged = {}
@@ -265,7 +271,9 @@ def _order_chains_from_root(
       sub_to_merged[sub_name] = merged_name
 
   ordered = {k: list(v) for k, v in merged_chains.items()}
-  root = heuristics.get_first_stick_for_shaping(unmerged_sf)
+  root = heuristics.get_first_stick_for_shaping(
+      unmerged_sf, use_tree_root=use_tree_root
+  )
   seen: set[str] = set()
   for stick in tr.breadth_first_traversal(
       unmerged_sf, start_stick_name=root.name
@@ -274,6 +282,13 @@ def _order_chains_from_root(
     if merged_name is None or merged_name in seen:
       continue
     chain = ordered[merged_name]
+    if (
+        use_tree_root
+        and stick.name == root.name
+        and stick.name not in (chain[0], chain[-1])
+    ):
+      seen.add(merged_name)
+      continue
     if stick.name not in (chain[0], chain[-1]):
       raise ValueError(
           f'First visited sub-stick {stick.name!r} is not an endpoint of'
@@ -295,11 +310,14 @@ def get_heuristics_shaping_data(
     shape_with_unmerged_tree: bool = False,
     merge_converter: Mapping[str, str] | None = None,
     sacrificial_flaps: Sequence[packing_types.SacrificialFlap] = (),
+    use_tree_root: bool = False,
 ) -> ShapingData:
   """Prepares flaps, rivers, `flap_info`, and river outer banks for shaping."""
   unmerged_sf = stick_figure
   merged_sf, raw_chains = stick_figure.merge_linear_chains()
-  merged_chains = _order_chains_from_root(unmerged_sf, raw_chains)
+  merged_chains = _order_chains_from_root(
+      unmerged_sf, raw_chains, use_tree_root=use_tree_root
+  )
   merged_sf = merged_sf.align_root_stick_to_target_azimuth_elevation()
 
   hinges = list(hinge_info_list)
@@ -321,13 +339,15 @@ def get_heuristics_shaping_data(
     ]
 
   root_dir = heuristics.compute_root_stick_direction_follow_stick_figure_root(
-      merged_sf, shaping_flaps, shaping_rivers
+      merged_sf, shaping_flaps, shaping_rivers, use_tree_root=use_tree_root
   )
   sac_map = heuristics.build_sacrificial_flaps_by_base_flap(sacrificial_flaps)
   flap_info = heuristics.get_flap_info_dict_with_hinge_info(
-      merged_sf, hinges, root_dir, sac_map
+      merged_sf, hinges, root_dir, sac_map, use_tree_root=use_tree_root
   )
-  outer_banks = get_outer_bank_indices(merged_sf, shaping_flaps, shaping_rivers)
+  outer_banks = get_outer_bank_indices(
+      merged_sf, shaping_flaps, shaping_rivers, use_tree_root=use_tree_root
+  )
 
   if shape_with_unmerged_tree:
     aligned_unmerged = (
@@ -340,6 +360,7 @@ def get_heuristics_shaping_data(
         root_direction_follow_stick_figure_root=root_dir,
         node_dict=flap_info,
         sacrificial_flaps_by_base_flap=sac_map,
+        use_tree_root=use_tree_root,
     )
     shaping_flaps, shaping_rivers = _subdivide_unmerged_elements(
         flaps=shaping_flaps,
@@ -350,7 +371,10 @@ def get_heuristics_shaping_data(
     )
     flap_info = unmerged_info
     outer_banks = get_outer_bank_indices(
-        aligned_unmerged, shaping_flaps, shaping_rivers
+        aligned_unmerged,
+        shaping_flaps,
+        shaping_rivers,
+        use_tree_root=use_tree_root,
     )
 
   shaping_flaps, shaping_rivers = (
