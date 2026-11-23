@@ -620,6 +620,59 @@ def split_creases_batch(
   return out
 
 
+def split_crease_at_points(
+    crease: 'Crease',
+    points: Iterable[point.Point],
+    *,
+    tolerance: float = DEFAULT_TOLERANCE,
+) -> list['Crease']:
+  """Splits `crease` at strictly interior candidate points.
+
+  Projects matching interior points along `crease.p1_init -> crease.p2_init`,
+  deduplicates nearby points within `tolerance`, and preserves `fold`,
+  `fold_percent`, `fold_step`, and `elevation` on every returned sub-segment.
+
+  Args:
+    crease: The crease segment to split.
+    points: Candidate points; only those strictly inside `crease` are used.
+    tolerance: Euclidean tolerance used to drop near-duplicate split points.
+
+  Returns:
+    Sub-segments ordered from `crease.p1_init` toward `crease.p2_init`, or
+    `[crease]` when no strictly interior split point exists.
+  """
+  p1, p2 = crease.p1_init, crease.p2_init
+  dx = p2.x - p1.x
+  dy = p2.y - p1.y
+  len_sq = dx * dx + dy * dy
+  if len_sq <= 0.0:
+    return [crease]
+  keyed: list[tuple[float, point.Point]] = []
+  for pt in points:
+    if crease.point_status(pt) == PointStatus.INTERNAL:
+      t = ((pt.x - p1.x) * dx + (pt.y - p1.y) * dy) / len_sq
+      if 0.0 < t < 1.0:
+        keyed.append((t, pt))
+  if not keyed:
+    return [crease]
+  keyed.sort(key=lambda item: item[0])
+  ordered = [p1]
+  for _, pt in keyed:
+    if math.hypot(pt.x - ordered[-1].x, pt.y - ordered[-1].y) > tolerance:
+      ordered.append(pt)
+  if math.hypot(p2.x - ordered[-1].x, p2.y - ordered[-1].y) <= tolerance:
+    ordered[-1] = p2
+  else:
+    ordered.append(p2)
+  if len(ordered) <= 2:
+    return [crease]
+  return [
+      dataclasses.replace(crease, p1_init=p_a, p2_init=p_b)
+      for p_a, p_b in zip(ordered, ordered[1:])
+      if math.hypot(p_a.x - p_b.x, p_a.y - p_b.y) > tolerance
+  ]
+
+
 def merge_creases(
     creases: Sequence['Crease'],
     only_trivial: bool = False,

@@ -66,6 +66,10 @@ class Rectangle:
           f'Rectangle {self.name} with corners {self.corners}'
           ' is not on the paper.'
       )
+    if self.circle_centers is not None and not isinstance(
+        self.circle_centers, tuple
+    ):
+      object.__setattr__(self, 'circle_centers', tuple(self.circle_centers))
     if (
         self.circle_centers is not None
         and not 1 <= len(self.circle_centers) <= 2

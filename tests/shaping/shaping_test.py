@@ -16,7 +16,9 @@
 """Unit and end-to-end tests for the box-pleating shaping package."""
 
 import copy
+import logging
 import math
+import pathlib
 from unittest import mock
 
 from absl.testing import absltest
@@ -28,11 +30,13 @@ from bp_pipeline.crease_pattern import crease as crease_utils
 from bp_pipeline.crease_pattern import point as point_utils
 from bp_pipeline.packing import types as packing_types
 from bp_pipeline.packing import utils_solver
+from bp_pipeline.shaping import bus_adapter
 from bp_pipeline.shaping import geometric_fold_3d_heuristics
 from bp_pipeline.shaping import geometric_fold_3d_heuristics_utils
 from bp_pipeline.shaping import geometric_simple_fold
 from bp_pipeline.shaping import geometric_utils
 from bp_pipeline.shaping import heuristics
+from bp_pipeline.shaping import heuristics_3d
 from bp_pipeline.shaping import heuristics_utils
 from bp_pipeline.shaping import shaping_elements
 from bp_pipeline.shaping import shaping_utils
@@ -40,6 +44,7 @@ from bp_pipeline.shaping import vector
 from bp_pipeline.solving import hinges as hinge_utils
 from bp_pipeline.stick_figures.examples import example_trees
 import cp_test_fixtures as examples
+import numpy as np
 
 
 class ShapingTest(parameterized.TestCase):
@@ -1500,6 +1505,292 @@ class HeuristicsUnitTest(parameterized.TestCase):
     )
     self.assertAlmostEqual(folded_pos[0], 0.25, places=3)
     self.assertAlmostEqual(folded_pos[1], 0.25, places=3)
+
+  def test_root_reference_orientation_priority_and_base_signs(self):
+    fold_res = bp.fold('human', preset='demo')
+    solved = fold_res.solved
+    packing_out, solver_res = bus_adapter.legacy_inputs(solved)
+    flaps, rivers = (
+        shaping_elements.convert_packing_elements_to_shaping_elements(
+            packing_rectangles=packing_out.flap_rectangles,
+            packing_rivers=packing_out.packing_rivers,
+            packing_grid_size=packing_out.packing_cp.grid_size,
+            solving_grid_size=solved.creases.grid_size,
+            base_cp=solved.creases,
+        )
+    )
+    elements = {e.name: e for e in (*flaps, *rivers)}
+    stick_fig = solved.packed.design.source
+    root_el = elements[stick_fig.root]
+    if isinstance(root_el, shaping_elements.ShapingRiver):
+      outer_bank = root_el.get_outer_bank_index(
+          stick_fig, stick_fig.root, list(flaps), list(rivers)
+      )
+      root_el = root_el.update_outer_bank_index(outer_bank)
+    ref_pt = geometric_fold_3d_heuristics.root_reference_point(root_el)
+    self.assertIsNotNone(ref_pt)
+    self.assertTrue(
+        root_el.is_internal_point(
+            point_utils.Point(x=ref_pt[0], y=ref_pt[1], require_on_paper=False),
+            strict=True,
+        )
+    )
+
+    # Planar Z-rotation reflects x before rotating when root_flipped is False
+    # and the folded root points upward (uy < 0).
+    graph_data = geometric_simple_fold.prepare_graph_data(solved.creases)
+    folded_verts = graph_data['folded_vertices']
+    d_unflipped = geometric_fold_3d_heuristics._rotate_simple_fold_direction_by_model_orientation(
+        np.array([1.0, 0.5, 0.0]),
+        root_el,
+        solved.packed.design.source,
+        graph_data,
+        folded_verts,
+        root_flipped=False,
+    )
+    d_flipped = geometric_fold_3d_heuristics._rotate_simple_fold_direction_by_model_orientation(
+        np.array([1.0, 0.5, 0.0]),
+        root_el,
+        solved.packed.design.source,
+        graph_data,
+        folded_verts,
+        root_flipped=True,
+    )
+    self.assertAlmostEqual(
+        float(np.linalg.norm(d_unflipped)),
+        float(np.linalg.norm(d_flipped)),
+        places=6,
+    )
+    self.assertFalse(np.allclose(d_unflipped, d_flipped))
+
+    # Empty graph_data raises ValueError cleanly.
+    empty_graph = {
+        'vertices_coords': [],
+        'edges_vertices': [],
+        'edge_vertices': [],
+        'edges_assignment': [],
+        'faces_vertices': [],
+        'face_vertices': [],
+        'face_orientations': [],
+    }
+    with self.assertRaises(ValueError):
+      geometric_fold_3d_heuristics._get_root_element_orientation(
+          root_el, solved.packed.design.source, empty_graph, []
+      )
+
+    # Custom element shaping priority + measure_base_directions + FF log check.
+    hinges = heuristics.update_hinge_info_from_solver_result(
+        packing_out.hinges, solver_res
+    )
+    hparams = geometric_fold_3d_heuristics.GeometricFolding3DHParams(
+        priority=('right_arm', 'left_arm'),
+        measure_base_directions=True,
+        check_ff_violations=True,
+    )
+    res = geometric_fold_3d_heuristics.get_shaping_creases_with_3d_geometric_folding_heuristics(
+        base_cp=solved.creases,
+        stick_figure=solved.packed.design.source,
+        shaping_flaps=flaps,
+        shaping_rivers=rivers,
+        hinge_info_list=hinges,
+        central_crease_removed=solved.central_crease_removed,
+        shape_with_unmerged_tree=False,
+        hparams=hparams,
+    )
+    self.assertNotEmpty(res['shaping_creases'])
+
+    # base_signs with sign=0.0 must be a no-op (must not collapse direction).
+    shaping_data = heuristics_utils.get_heuristics_shaping_data(
+        stick_figure=solved.packed.design.source,
+        shaping_flaps=list(flaps),
+        shaping_rivers=list(rivers),
+        hinge_info_list=list(hinges),
+        central_crease_removed=solved.central_crease_removed,
+        shape_with_unmerged_tree=False,
+    )
+    posts_default = heuristics_3d.get_flap_post_dict(
+        solved.packed.design.source, shaping_data['flap_info']
+    )
+    posts_zero_sign = heuristics_3d.get_flap_post_dict(
+        solved.packed.design.source,
+        shaping_data['flap_info'],
+        base_signs={'left_arm': 0.0, 'right_arm': -1.0},
+        unrotated={'head'},
+    )
+    self.assertEqual(
+        len(posts_default['left_arm']), len(posts_zero_sign['left_arm'])
+    )
+
+    # Flat-foldability discard warning matches CLI log capture regex.
+    bad_crease = crease_utils.Crease(
+        point_utils.Point(x=0.23, y=0.37),
+        point_utils.Point(x=0.61, y=0.79),
+        fold=crease_utils.Fold.MOUNTAIN,
+    )
+    orig_shape = (
+        geometric_fold_3d_heuristics.shape_element_with_3d_geometric_folding_heuristics
+    )
+
+    def _inject_bad(*args, **kwargs):
+      out = orig_shape(*args, **kwargs)
+      elem = kwargs.get('element') or args[0]
+      if elem.name == 'left_arm':
+        return {**out, 'shaping_creases': [*out['shaping_creases'], bad_crease]}
+      return out
+
+    with (
+        mock.patch.object(
+            geometric_fold_3d_heuristics,
+            'shape_element_with_3d_geometric_folding_heuristics',
+            side_effect=_inject_bad,
+        ),
+        self.assertLogs(level=logging.WARNING) as captured_logs,
+    ):
+      bp.shape(solved)
+    self.assertTrue(
+        any(
+            'Flat foldability violation detected after shaping element:'
+            ' left_arm. Discarding'
+            in msg
+            for msg in captured_logs.output
+        )
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='unflipped_root_up',
+          root_flipped=False,
+          root_orientation=(0.0, -1.0, 0.0),
+          expected=(1.0, -0.5, 0.0),
+      ),
+      dict(
+          testcase_name='unflipped_root_down',
+          root_flipped=False,
+          root_orientation=(0.0, 1.0, 0.0),
+          expected=(1.0, 0.5, 0.0),
+      ),
+      dict(
+          testcase_name='flipped_root_up',
+          root_flipped=True,
+          root_orientation=(0.0, -1.0, 0.0),
+          expected=(-1.0, -0.5, 0.0),
+      ),
+      dict(
+          testcase_name='flipped_root_down',
+          root_flipped=True,
+          root_orientation=(0.0, 1.0, 0.0),
+          expected=(1.0, 0.5, 0.0),
+      ),
+      dict(
+          testcase_name='unflipped_root_horizontal',
+          root_flipped=False,
+          root_orientation=(1.0, 0.0, 0.0),
+          expected=(0.5, -1.0, 0.0),
+      ),
+  )
+  def test_rotate_simple_fold_direction_four_quadrants(
+      self,
+      root_flipped: bool,
+      root_orientation: tuple[float, float, float],
+      expected: tuple[float, float, float],
+  ):
+    with mock.patch.object(
+        geometric_fold_3d_heuristics,
+        '_get_root_element_orientation',
+        return_value=np.array(root_orientation, dtype=float),
+    ):
+      actual = geometric_fold_3d_heuristics._rotate_simple_fold_direction_by_model_orientation(
+          np.array([1.0, 0.5, 0.0]),
+          root_element=mock.Mock(),
+          stick_figure=mock.Mock(),
+          graph_data={},  # type: ignore[arg-type]
+          folded_verts=[],
+          root_flipped=root_flipped,
+      )
+    np.testing.assert_allclose(actual, np.array(expected), atol=1e-9)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='human_unflipped_uy_neg',
+          fixture_name='human',
+          expected_root_flipped=False,
+          expected_uy_sign=-1,
+      ),
+      dict(
+          testcase_name='horned_owl_unflipped_uy_pos',
+          fixture_name='horned_owl',
+          expected_root_flipped=False,
+          expected_uy_sign=1,
+      ),
+      dict(
+          testcase_name='level_shifter_2_rivers_flipped_uy_pos',
+          fixture_name='level_shifter_2_rivers',
+          expected_root_flipped=True,
+          expected_uy_sign=1,
+      ),
+      dict(
+          testcase_name='spike_flipped_uy_neg',
+          fixture_name='spike',
+          expected_root_flipped=True,
+          expected_uy_sign=-1,
+      ),
+  )
+  def test_bp_shape_preserves_bilateral_limb_sides_and_pose_gate(
+      self,
+      fixture_name: str,
+      expected_root_flipped: bool,
+      expected_uy_sign: int,
+  ):
+    fixture_path = (
+        pathlib.Path(__file__).parent
+        / 'testdata'
+        / f'{fixture_name}_solved.json'
+    )
+    solved = bp.loads(fixture_path.read_text(encoding='utf-8'))
+    self.assertIsInstance(solved, bp.SolvedCreasePattern)
+
+    # Verify the fixture exercises the expected (root_flipped, sign(uy)) case.
+    stick_fig = solved.packed.design.source
+    packing_out, _ = bus_adapter.legacy_inputs(solved)
+    flaps, rivers = (
+        shaping_elements.convert_packing_elements_to_shaping_elements(
+            packing_rectangles=packing_out.flap_rectangles,
+            packing_rivers=packing_out.packing_rivers,
+            packing_grid_size=packing_out.packing_cp.grid_size,
+            solving_grid_size=solved.creases.grid_size,
+            base_cp=solved.creases,
+        )
+    )
+    merged_fig, _ = stick_fig.merge_linear_chains()
+    root_stick = heuristics.get_first_stick_for_shaping(merged_fig)
+    root_el = shaping_elements.get_element_by_name(
+        root_stick.name, flaps, rivers
+    )
+    if isinstance(root_el, shaping_elements.ShapingRiver):
+      outer_bank = root_el.get_outer_bank_index(
+          merged_fig, root_stick.name, flaps, rivers
+      )
+      root_el = root_el.update_outer_bank_index(outer_bank)
+    graph_data = geometric_simple_fold.prepare_graph_data(solved.creases)
+    root_flipped = geometric_fold_3d_heuristics._is_root_reference_flipped(
+        root_el, graph_data
+    )
+    root_orient = geometric_fold_3d_heuristics._get_root_element_orientation(
+        root_el, merged_fig, graph_data, graph_data['folded_vertices']
+    )
+    self.assertEqual(root_flipped, expected_root_flipped)
+    self.assertGreater(root_orient[1] * expected_uy_sign, 0.0)
+
+    shaped = bp.shape(solved)
+    report = bp.evaluate_fidelity(shaped)
+    self.assertTrue(
+        report.pose_gate.passed,
+        msg=(
+            f'{fixture_name}: pose_gate={report.pose_gate.to_dict()}'
+            f' (fidelity={report.fidelity:.2f})'
+        ),
+    )
+    self.assertEmpty(report.pose_gate.crossing)
 
 
 if __name__ == '__main__':

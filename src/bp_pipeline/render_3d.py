@@ -20,7 +20,6 @@ from collections.abc import Sequence
 import dataclasses
 import math
 import pathlib
-import typing
 from typing import Any
 
 from matplotlib import axes
@@ -29,10 +28,9 @@ from matplotlib import patches
 import matplotlib.pyplot as plt
 
 from . import bus
-from .crease_pattern import crease as crease_lib
+from . import folder_3d as fold_3d
 from .crease_pattern import crease_pattern as cp_lib
 
-_FOLD_PRECEDENCE = {'M': 3, 'V': 3, 'F': 2, 'B': 1, 'U': 0}
 _DEFAULT_PAPER_RGB = (0.85, 0.745, 0.596)
 
 _TURNAROUND_VIEWS: tuple[tuple[str, float, float, float], ...] = (
@@ -58,338 +56,6 @@ class FoldedMesh3D:
   def to_fold_dict(self, title: str = 'model') -> dict[str, Any]:
     """Serializes this 3D folded mesh to a FOLD v1.1 `foldedForm` dictionary."""
     return mesh_to_fold_dict(self, title)
-
-
-def _get_vertex_index(
-    x: float,
-    y: float,
-    vertices: list[tuple[float, float]],
-    tol: float,
-) -> int:
-  """Finds an existing vertex within `tol` or appends a new vertex."""
-  tol_sq = tol * tol
-  for idx, (vx, vy) in enumerate(vertices):
-    dx = vx - x
-    dy = vy - y
-    if dx * dx + dy * dy < tol_sq:
-      return idx
-  vertices.append((x, y))
-  return len(vertices) - 1
-
-
-def _crease_assignment_and_angle(
-    fold: crease_lib.Fold,
-    fold_percent: float,
-) -> tuple[str, float]:
-  """Maps a `Fold` enum and `fold_percent` to FOLD assignment and angle."""
-  clamped_pct = max(0.0, min(1.0, float(fold_percent)))
-  match fold:
-    case crease_lib.Fold.MOUNTAIN | crease_lib.Fold.MOUNTAIN_ZEBRA:
-      return ('M', -180.0 * clamped_pct)
-    case crease_lib.Fold.VALLEY | crease_lib.Fold.VALLEY_ZEBRA:
-      return ('V', 180.0 * clamped_pct)
-    case crease_lib.Fold.BORDER:
-      return ('B', 0.0)
-    case crease_lib.Fold.HINGE | crease_lib.Fold.TRIANGLE:
-      return ('F', 0.0)
-    case _ as unreachable:
-      typing.assert_never(unreachable)
-
-
-def _split_collinear_edges(
-    vertices: Sequence[tuple[float, float]],
-    edges: Sequence[dict[str, Any]],
-    tol: float,
-) -> list[dict[str, Any]]:
-  """Splits edges whenever another vertex lies strictly in their interior."""
-  num_vertices = len(vertices)
-  split_edges: list[dict[str, Any]] = []
-  for edge in edges:
-    v1 = edge['v1']
-    v2 = edge['v2']
-    ax_pt, ay_pt = vertices[v1]
-    bx_pt, by_pt = vertices[v2]
-    ab_x = bx_pt - ax_pt
-    ab_y = by_pt - ay_pt
-    len_sq = ab_x * ab_x + ab_y * ab_y
-    if len_sq < 1e-10:
-      continue
-    length = math.sqrt(len_sq)
-    dot_limit = tol * length
-    min_x = min(ax_pt, bx_pt) - tol
-    max_x = max(ax_pt, bx_pt) + tol
-    min_y = min(ay_pt, by_pt) - tol
-    max_y = max(ay_pt, by_pt) + tol
-
-    splits: list[tuple[float, int]] = []
-    for idx in range(num_vertices):
-      if idx in (v1, v2):
-        continue
-      vx, vy = vertices[idx]
-      if vx < min_x or vx > max_x or vy < min_y or vy > max_y:
-        continue
-      av_x = vx - ax_pt
-      av_y = vy - ay_pt
-      cross = abs(ab_x * av_y - ab_y * av_x)
-      if cross / length < tol:
-        dot = ab_x * av_x + ab_y * av_y
-        if dot_limit < dot < len_sq - dot_limit:
-          splits.append((dot, idx))
-
-    if not splits:
-      split_edges.append(edge)
-      continue
-
-    splits.sort(key=lambda item: item[0])
-    chain = [v1] + [idx for _, idx in splits] + [v2]
-    for k in range(len(chain) - 1):
-      if chain[k] != chain[k + 1]:
-        split_edges.append({
-            'v1': chain[k],
-            'v2': chain[k + 1],
-            'assignment': edge['assignment'],
-            'fold_angle': edge['fold_angle'],
-        })
-  return split_edges
-
-
-def _extract_planar_graph(
-    cp: cp_lib.CreasePattern,
-    tol: float = 0.001,
-) -> tuple[
-    list[tuple[float, float]],
-    list[dict[str, Any]],
-    dict[tuple[int, int], dict[str, Any]],
-]:
-  """Builds a split planar vertex-and-edge graph from a `CreasePattern`."""
-  vertices: list[tuple[float, float]] = []
-  raw_edges_map: dict[tuple[int, int], dict[str, Any]] = {}
-
-  def add_segment(
-      x1: float,
-      y1: float,
-      x2: float,
-      y2: float,
-      assignment: str,
-      fold_angle: float,
-  ) -> None:
-    if math.hypot(x1 - x2, y1 - y2) < 1e-5:
-      return
-    v1 = _get_vertex_index(x1, y1, vertices, tol)
-    v2 = _get_vertex_index(x2, y2, vertices, tol)
-    if v1 == v2:
-      return
-    key = (min(v1, v2), max(v1, v2))
-    existing = raw_edges_map.get(key)
-    cur_prec = _FOLD_PRECEDENCE.get(assignment, 0)
-    ex_prec = (
-        _FOLD_PRECEDENCE.get(existing['assignment'], 0) if existing else -1
-    )
-    if cur_prec > ex_prec:
-      raw_edges_map[key] = {
-          'v1': v1,
-          'v2': v2,
-          'assignment': assignment,
-          'fold_angle': fold_angle,
-      }
-
-  # Seed the four unit-square sheet borders so the boundary stays watertight.
-  border_corners = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)]
-  for i in range(4):
-    c1 = border_corners[i]
-    c2 = border_corners[(i + 1) % 4]
-    add_segment(c1[0], c1[1], c2[0], c2[1], 'B', 0.0)
-
-  for crease_line in cp.creases:
-    assign, angle = _crease_assignment_and_angle(
-        crease_line.fold,
-        crease_line.fold_percent,
-    )
-    add_segment(
-        crease_line.p1.x - 0.5,
-        crease_line.p1.y - 0.5,
-        crease_line.p2.x - 0.5,
-        crease_line.p2.y - 0.5,
-        assign,
-        angle,
-    )
-
-  split_edges = _split_collinear_edges(
-      vertices, list(raw_edges_map.values()), tol
-  )
-  unique_map: dict[tuple[int, int], dict[str, Any]] = {}
-  for edge in split_edges:
-    key = (min(edge['v1'], edge['v2']), max(edge['v1'], edge['v2']))
-    existing = unique_map.get(key)
-    cur_prec = _FOLD_PRECEDENCE.get(edge['assignment'], 0)
-    ex_prec = (
-        _FOLD_PRECEDENCE.get(existing['assignment'], 0) if existing else -1
-    )
-    if cur_prec > ex_prec:
-      unique_map[key] = edge
-
-  unique_edges = list(unique_map.values())
-  final_map = {
-      (min(e['v1'], e['v2']), max(e['v1'], e['v2'])): {
-          'assignment': e['assignment'],
-          'fold_angle': e['fold_angle'],
-      }
-      for e in unique_edges
-  }
-  return vertices, unique_edges, final_map
-
-
-def _find_planar_faces(
-    vertices: Sequence[tuple[float, float]],
-    edges: Sequence[dict[str, Any]],
-) -> list[list[int]]:
-  """Extracts minimal bounded planar faces via angular half-edge walking."""
-  num_vertices = len(vertices)
-  adj: list[list[int]] = [[] for _ in range(num_vertices)]
-  for edge in edges:
-    adj[edge['v1']].append(edge['v2'])
-    adj[edge['v2']].append(edge['v1'])
-
-  for v_idx in range(num_vertices):
-    if not adj[v_idx]:
-      continue
-    x0, y0 = vertices[v_idx]
-    adj[v_idx].sort(
-        key=lambda nb, cx=x0, cy=y0: math.atan2(
-            vertices[nb][1] - cy, vertices[nb][0] - cx
-        )
-    )
-
-  next_half_edge: dict[tuple[int, int], int] = {}
-  for v_idx, neighbors in enumerate(adj):
-    degree = len(neighbors)
-    for i, u_idx in enumerate(neighbors):
-      next_half_edge[(u_idx, v_idx)] = neighbors[(i - 1) % degree]
-
-  faces: list[list[int]] = []
-  visited: set[tuple[int, int]] = set()
-  for start_edge in next_half_edge:
-    if start_edge in visited:
-      continue
-    u_idx, v_idx = start_edge
-    face = [u_idx, v_idx]
-    visited.add((u_idx, v_idx))
-    start_vertex = u_idx
-    w_idx = next_half_edge.get((u_idx, v_idx))
-    broken = False
-    steps = 0
-    while w_idx != start_vertex:
-      if w_idx is None or steps > 1000:
-        broken = True
-        break
-      face.append(w_idx)
-      visited.add((v_idx, w_idx))
-      u_idx, v_idx = v_idx, w_idx
-      w_idx = next_half_edge.get((u_idx, v_idx))
-      steps += 1
-    if broken or len(face) < 3:
-      continue
-    visited.add((face[-1], face[0]))
-    signed_area = 0.0
-    face_len = len(face)
-    for i in range(face_len):
-      p1 = vertices[face[i]]
-      p2 = vertices[face[(i + 1) % face_len]]
-      signed_area += p1[0] * p2[1] - p2[0] * p1[1]
-    if signed_area > 1e-9:
-      faces.append(list(reversed(face)))
-  return faces
-
-
-def _mat4_identity() -> list[float]:
-  return [
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-  ]
-
-
-def _mat4_mul(mat_a: Sequence[float], mat_b: Sequence[float]) -> list[float]:
-  out = [0.0] * 16
-  for row in range(4):
-    for col in range(4):
-      out[row * 4 + col] = (
-          mat_a[row * 4 + 0] * mat_b[col]
-          + mat_a[row * 4 + 1] * mat_b[4 + col]
-          + mat_a[row * 4 + 2] * mat_b[8 + col]
-          + mat_a[row * 4 + 3] * mat_b[12 + col]
-      )
-  return out
-
-
-def _mat4_translation(tx: float, ty: float, tz: float) -> list[float]:
-  return [
-      1.0,
-      0.0,
-      0.0,
-      tx,
-      0.0,
-      1.0,
-      0.0,
-      ty,
-      0.0,
-      0.0,
-      1.0,
-      tz,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-  ]
-
-
-def _mat4_rotation_axis(
-    ax_x: float, ax_y: float, ax_z: float, rad: float
-) -> list[float]:
-  cos_a = math.cos(rad)
-  sin_a = math.sin(rad)
-  one_minus_c = 1.0 - cos_a
-  return [
-      one_minus_c * ax_x * ax_x + cos_a,
-      one_minus_c * ax_x * ax_y - sin_a * ax_z,
-      one_minus_c * ax_x * ax_z + sin_a * ax_y,
-      0.0,
-      one_minus_c * ax_x * ax_y + sin_a * ax_z,
-      one_minus_c * ax_y * ax_y + cos_a,
-      one_minus_c * ax_y * ax_z - sin_a * ax_x,
-      0.0,
-      one_minus_c * ax_x * ax_z - sin_a * ax_y,
-      one_minus_c * ax_y * ax_z + sin_a * ax_x,
-      one_minus_c * ax_z * ax_z + cos_a,
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-  ]
-
-
-def _apply_mat4(
-    mat: Sequence[float], x: float, y: float, z: float
-) -> tuple[float, float, float]:
-  return (
-      mat[0] * x + mat[1] * y + mat[2] * z + mat[3],
-      mat[4] * x + mat[5] * y + mat[6] * z + mat[7],
-      mat[8] * x + mat[9] * y + mat[10] * z + mat[11],
-  )
 
 
 def _cross3(
@@ -784,130 +450,42 @@ def build_folded_mesh_3d(
     ValueError: If no bounded planar faces can be extracted from `cp`.
   """
   cp_obj, resolved_packed = _unwrap_mesh_target(cp, packed)
-  raw_verts, raw_edges, raw_edges_map = _extract_planar_graph(cp_obj, tol=tol)
-  raw_faces = _find_planar_faces(raw_verts, raw_edges)
-  if not raw_faces:
-    raise ValueError('No bounded planar faces found in crease pattern.')
 
-  active_set: set[int] = set()
-  for face in raw_faces:
-    active_set.update(face)
-  active_vertices = sorted(active_set)
-  old_to_new = {old_i: new_i for new_i, old_i in enumerate(active_vertices)}
-  vertices_2d = [raw_verts[i] for i in active_vertices]
-  faces: list[list[int]] = []
-  for face in raw_faces:
-    faces.append([old_to_new[v] for v in face])
+  def _pick_anchor(graph: fold_3d.FoldGraph) -> int:
+    centered_2d = [
+        (float(x - 0.5), float(y - 0.5)) for x, y in graph.vertices_2d
+    ]
+    face_lists = [face.tolist() for face in graph.faces]
+    return _select_anchor_face(centered_2d, face_lists, resolved_packed)
 
-  edge_map: dict[tuple[int, int], tuple[int, int, tuple[int, int]]] = {}
-  for face in faces:
-    face_len = len(face)
-    for i in range(face_len):
-      u_idx, v_idx = face[i], face[(i + 1) % face_len]
-      key = (min(u_idx, v_idx), max(u_idx, v_idx))
-      if key not in edge_map:
-        orig_u = active_vertices[u_idx]
-        orig_v = active_vertices[v_idx]
-        edge_map[key] = (
-            u_idx,
-            v_idx,
-            (min(orig_u, orig_v), max(orig_u, orig_v)),
-        )
-
-  edges: list[tuple[int, int]] = []
-  edges_assignment: list[str] = []
-  edges_fold_angle: list[float] = []
-  edge_key_angle: dict[tuple[int, int], float] = {}
-  for u_idx, v_idx, orig_key in edge_map.values():
-    edges.append((u_idx, v_idx))
-    info = raw_edges_map.get(orig_key)
-    assign = info['assignment'] if info else 'B'
-    angle = float(info['fold_angle']) if info else 0.0
-    edges_assignment.append(assign)
-    edges_fold_angle.append(angle)
-    edge_key_angle[(min(u_idx, v_idx), max(u_idx, v_idx))] = angle
-
-  start_face = _select_anchor_face(vertices_2d, faces, resolved_packed)
-
-  edge_to_faces: dict[tuple[int, int], list[int]] = {}
-  for f_idx, face in enumerate(faces):
-    face_len = len(face)
-    for i in range(face_len):
-      u_idx, v_idx = face[i], face[(i + 1) % face_len]
-      key = (min(u_idx, v_idx), max(u_idx, v_idx))
-      edge_to_faces.setdefault(key, []).append(f_idx)
-
-  face_mats: list[list[float] | None] = [None] * len(faces)
-  face_mats[start_face] = _mat4_identity()
-  visited_faces = {start_face}
-  queue = collections.deque([start_face])
-
-  while queue:
-    curr_f = queue.popleft()
-    curr_mat = face_mats[curr_f]
-    assert curr_mat is not None
-    curr_verts = faces[curr_f]
-    face_len = len(curr_verts)
-    for i in range(face_len):
-      v1, v2 = curr_verts[i], curr_verts[(i + 1) % face_len]
-      key = (min(v1, v2), max(v1, v2))
-      for next_f in edge_to_faces.get(key, ()):
-        if next_f == curr_f or next_f in visited_faces:
-          continue
-        angle_deg = edge_key_angle.get(key, 0.0)
-        p1 = _apply_mat4(curr_mat, vertices_2d[v1][0], vertices_2d[v1][1], 0.0)
-        p2 = _apply_mat4(curr_mat, vertices_2d[v2][0], vertices_2d[v2][1], 0.0)
-        dx = p2[0] - p1[0]
-        dy = p2[1] - p1[1]
-        dz = p2[2] - p1[2]
-        length = math.sqrt(dx * dx + dy * dy + dz * dz)
-        if length > 1e-9 and abs(angle_deg) > 1e-6:
-          rad = math.radians(angle_deg)
-          piv = _mat4_translation(p1[0], p1[1], p1[2])
-          piv_inv = _mat4_translation(-p1[0], -p1[1], -p1[2])
-          rot = _mat4_rotation_axis(dx / length, dy / length, dz / length, rad)
-          transform = _mat4_mul(
-              piv, _mat4_mul(rot, _mat4_mul(piv_inv, curr_mat))
-          )
-        else:
-          transform = list(curr_mat)
-        face_mats[next_f] = transform
-        visited_faces.add(next_f)
-        queue.append(next_f)
-
-  num_v = len(vertices_2d)
-  sum_xyz = [[0.0, 0.0, 0.0] for _ in range(num_v)]
-  counts = [0] * num_v
-  for f_idx, face in enumerate(faces):
-    mat = face_mats[f_idx]
-    if mat is None:
-      continue
-    for v_idx in face:
-      px, py, pz = _apply_mat4(
-          mat, vertices_2d[v_idx][0], vertices_2d[v_idx][1], 0.0
-      )
-      sum_xyz[v_idx][0] += px
-      sum_xyz[v_idx][1] += py
-      sum_xyz[v_idx][2] += pz
-      counts[v_idx] += 1
-
-  raw_pts_3d: list[tuple[float, float, float]] = []
-  for idx in range(num_v):
-    if counts[idx] > 0:
-      raw_pts_3d.append((
-          sum_xyz[idx][0] / counts[idx],
-          -sum_xyz[idx][1] / counts[idx],
-          sum_xyz[idx][2] / counts[idx],
-      ))
-    else:
-      raw_pts_3d.append((vertices_2d[idx][0], -vertices_2d[idx][1], 0.0))
-
+  model = fold_3d.fold_3d(
+      cp_obj,
+      anchor_face=_pick_anchor,
+      vert_tol=tol,
+      add_border=True,
+      merge_collinear=False,
+      strict=False,
+  )
+  vertices_2d = [(float(x - 0.5), float(y - 0.5)) for x, y in model.vertices_2d]
+  faces = [face.tolist() for face in model.faces]
+  edges = [(int(u), int(v)) for u, v in model.edges]
+  edges_assignment = list(model.assignments)
+  edges_fold_angle = [float(a) for a in model.fold_angles]
+  edge_key_angle = {
+      (min(u, v), max(u, v)): angle
+      for (u, v), angle in zip(edges, edges_fold_angle, strict=True)
+  }
+  raw_pts_3d = [
+      (float(x - 0.5), -float(y - 0.5), float(z))
+      for x, y, z in model.vertices_3d
+  ]
   aligned_pts_3d = _align_points_to_camera_frame(
       raw_pts_3d,
       vertices_2d,
-      faces[start_face],
+      faces[model.anchor_face],
       resolved_packed,
   )
+  num_v = len(vertices_2d)
   cx = sum(p[0] for p in aligned_pts_3d) / num_v
   cy = sum(p[1] for p in aligned_pts_3d) / num_v
   cz = sum(p[2] for p in aligned_pts_3d) / num_v
@@ -1136,7 +714,7 @@ def render_shaped_3d_turnaround_png(
     color_top: Sequence[int] | None = None,
     dpi: int = 180,
 ) -> pathlib.Path:
-  """Renders a 4-angle shaded 3D turnaround PNG (`Iso`, `Side`, `Front`, `Top`)."""
+  """Renders a 4-view shaded 3D turnaround PNG (`Iso`, `Side`, `Front`, `Top`)."""
   target_path = pathlib.Path(out_path)
   target_path.parent.mkdir(parents=True, exist_ok=True)
   fig, axs = plt.subplots(1, 4, figsize=(20, 5.2))
@@ -1189,9 +767,15 @@ def save_3d_turnaround(
     else:
       source_tree = resolved_packed.packed_tree
 
-  resolved_name = name or (
-      source_tree.name if source_tree is not None and source_tree.name else None
-  ) or 'model'
+  resolved_name = (
+      name
+      or (
+          source_tree.name
+          if source_tree is not None and source_tree.name
+          else None
+      )
+      or 'model'
+  )
   resolved_color = color_top
   if resolved_color is None and source_tree is not None:
     resolved_color = getattr(source_tree, 'color_top', None)

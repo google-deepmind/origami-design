@@ -15,12 +15,13 @@
 
 """Heuristic functions for generating the parameters for 3D shaping."""
 
+from collections.abc import Collection, Mapping, Sequence
 import dataclasses
 import enum
 import functools
 import logging
 import math
-from typing import Sequence, Union
+from typing import Union
 
 import numpy as np
 
@@ -507,6 +508,8 @@ def get_flap_post_dict(
     default_strategy: FoldStrategy3D = FoldStrategy3D.DEFAULT,
     flap_strategies: dict[str, FoldStrategy3D] | None = None,
     max_slope_thresh: float = MAX_SLOPE,
+    unrotated: Collection[str] = (),
+    base_signs: Mapping[str, float] | None = None,
 ) -> dict[str, Sequence[SimpleFoldInfo]]:
   """Generates a dictionary of SimpleFoldInfo for each stick in the stick figure.
 
@@ -528,6 +531,12 @@ def get_flap_post_dict(
     flap_strategies: A dictionary mapping flap names to their specific shaping
       strategy. If not provided, the default strategy will be used.
     max_slope_thresh: The maximum slope threshold for the flap.
+    unrotated: Stick names that receive no shaping creases in this pass; each
+      keeps its initial posture so descendant sticks start from the unrotated
+      parent frame rather than its target stick-figure frame.
+    base_signs: Optional mapping of stick names to measured directions on the
+      flat-folded base (`> 0` along the root stick, `< 0` against it; `0` is
+      ignored). Overrides hinge-inferred initial directions when provided.
 
   Returns:
     A dictionary mapping stick names to their corresponding SimpleFoldInfo.
@@ -551,6 +560,12 @@ def get_flap_post_dict(
           )
       ]
   }
+  # Postures on the flat base (before any shaping), in the same frame.
+  base_postures = {
+      first_stick_name: PostureMatrix(
+          y=np.array([0, 1, 0]), z=np.array([0, 0, 1])
+      )
+  }
   for stick in tr.breadth_first_traversal(
       stickfigure, start_stick_name=first_stick_name
   ):
@@ -572,7 +587,7 @@ def get_flap_post_dict(
             joint.name
         )
         direction_vec_global = (
-            unnormalized_direction_vec_global  # pyrefly: ignore[unsupported-operation]
+            unnormalized_direction_vec_global
             / np.linalg.norm(unnormalized_direction_vec_global)
         )
 
@@ -597,6 +612,50 @@ def get_flap_post_dict(
               parent_pose_matrix=parent_posture_matrix_after_shaping,
               make_post_hinge_top=make_post_hinge_top,
           )
+
+        # The parent's rotation by shaping, applied to the child's posture on
+        # the flat base (the child rides on its parent).
+        parent_rotation = (
+            parent_posture_matrix_after_shaping.value
+            @ base_postures[stick.name].value.T
+        )
+        sign = base_signs.get(neighbor_stick.name) if base_signs else None
+        if sign is not None and sign != 0:
+          direction = 1.0 if sign > 0 else -1.0
+          base_posture = PostureMatrix(
+              y=np.array([0.0, direction, 0.0]),
+              z=np.array([0.0, 0.0, 1.0]),
+          )
+          measured = PostureMatrix.from_matrix(
+              parent_rotation @ base_posture.value
+          )
+          if not np.allclose(measured.y, init_post_matrix_global.y, atol=1e-6):
+            logging.warning(
+                'Base direction of %s measured %s the root; overriding hinge'
+                ' fold state %s.',
+                neighbor_stick.name,
+                'along' if direction > 0 else 'against',
+                flap_info[neighbor_stick.name].fold_state,
+            )
+          init_post_matrix_global = measured
+        else:
+          base_posture = PostureMatrix.from_matrix(
+              parent_rotation.T @ init_post_matrix_global.value
+          )
+        base_postures[neighbor_stick.name] = base_posture
+
+        if neighbor_stick.name in unrotated:
+          flap_posture_dict[neighbor_stick.name] = [
+              SimpleFoldInfo(
+                  posture_matrix_before_shaping=init_post_matrix_global,
+                  posture_matrix_after_shaping=init_post_matrix_global,
+                  rotation_axis=np.zeros(3),
+                  rotation_axis_local=np.zeros(3),
+                  rotation_angle=0.0,
+                  required_flip=False,
+              )
+          ]
+          continue
 
         # If the dot product is positive, we have an acute zigzag rotation,
         # Here we assume we will apply a 180 degree flip to the flap.
@@ -734,4 +793,4 @@ def get_flap_post_dict(
           )
           flap_posture_dict[neighbor_stick.name] = simple_fold_infos
 
-  return flap_posture_dict  # pyrefly: ignore[bad-return]
+  return flap_posture_dict

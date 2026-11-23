@@ -32,7 +32,6 @@ from ..crease_pattern import point as point_utils
 from ..packing import packing_output as packing_output_utils
 from ..packing import types as packing_types
 from ..solving import hinges as hinge_utils
-from ..stick_figures import angle_utils
 from ..stick_figures import stick_figure as sf_utils
 from . import geometric_fold_3d_heuristics_utils
 from . import geometric_simple_fold
@@ -45,6 +44,7 @@ from . import shaping_utils
 from . import types as shaping_types
 
 _NINETY_DEG_SLOPE_TOLERANCE = 0.1
+_MAX_UNROTATED_PASSES = 3
 
 
 class ElementShapingResult(TypedDict):
@@ -103,6 +103,14 @@ class GeometricFolding3DHParams:
     strategy: The 3D folding strategy to use.
     per_flap_strategy: Per-flap overrides for the folding strategy.
     per_flap_hinge_inscribe_depth: Per-flap overrides for hinge inscribe depth.
+    measure_base_directions: Whether to measure initial flap directions along or
+      against the root directly from the flat-folded base instead of relying
+      solely on hinge-inferred fold states.
+    priority: Element names to shape first so high-priority elements win when
+      later elements are discarded for local flat-foldability violations.
+    direction_graph_data: Optional precomputed graph data of the unshaped base
+      for `measure_base_directions` (defaults to the graph of `base_cp`). Use
+      when flat pre-shaping has already altered flap boundaries.
   """
 
   shape_subset: Sequence[str] | None = None
@@ -115,6 +123,9 @@ class GeometricFolding3DHParams:
   per_flap_hinge_inscribe_depth: dict[str, float] = dataclasses.field(
       default_factory=dict
   )
+  measure_base_directions: bool = True
+  priority: Sequence[str] = ()
+  direction_graph_data: geometric_simple_fold.GraphData | None = None
 
 
 def _get_rotation_axis_slope(
@@ -163,14 +174,14 @@ def _get_opposite_hinge_points_no_elevation(
 ) -> tuple[point_utils.Point, point_utils.Point]:
   """Returns two points on the boundary that are on paper."""
   cur_p, edge_index = boundary.creases[0].p1_init, 0
-  assert shaping_utils.check_point_on_grid(
-      cur_p, grid_size
-  ), f'Point {cur_p} is not on the grid with size {grid_size}.'
+  if not shaping_utils.check_point_on_grid(cur_p, grid_size):
+    raise ValueError(f'Point {cur_p} is not on the grid with size {grid_size}.')
   for _ in range(boundary.num_walk_steps_upper_bound(grid_size)):
     next_p, edge_index = boundary.walk(cur_p, edge_index, grid_size)
-    assert shaping_utils.check_point_on_grid(
-        next_p, grid_size
-    ), f'Point {next_p} is not on the grid with size {grid_size}.'
+    if not shaping_utils.check_point_on_grid(next_p, grid_size):
+      raise ValueError(
+          f'Point {next_p} is not on the grid with size {grid_size}.'
+      )
 
     if cur_p.on_paper and next_p.on_paper:
       return cur_p, next_p
@@ -251,7 +262,8 @@ def _get_cut_line_from_anchor_and_direction(
       A tuple containing the start and end points of the cut line in folded
       space.
   """
-  assert all(v is not None for v in folded_verts), folded_verts
+  if any(v is None for v in folded_verts):
+    raise ValueError(f'Unresolved folded vertices: {folded_verts}.')
   cut_line_start = geometric_utils.get_folded_pos(
       point=anchor,
       unfolded_coords=graph_data['vertices_coords'],
@@ -259,9 +271,8 @@ def _get_cut_line_from_anchor_and_direction(
       edge_vertices=graph_data['edge_vertices'],
       face_vertices=graph_data['face_vertices'],
   )
-  assert (
-      cut_line_start is not None
-  ), f'Cut line start is None for anchor: {anchor}.'
+  if cut_line_start is None:
+    raise ValueError(f'Cut line start is None for anchor: {anchor}.')
   cut_line_end = (
       cut_line_start[0] + simple_fold_direction[0],
       cut_line_start[1] + simple_fold_direction[1],
@@ -311,11 +322,92 @@ def _get_root_element_orientation(
       face_vertices=graph_data['face_vertices'],
   )
 
+  if start_folded is None or end_folded is None:
+    raise ValueError(
+        f'Could not map root element {root_element.name!r} to folded space.'
+    )
   return np.array([
       end_folded[0] - start_folded[0],
       end_folded[1] - start_folded[1],
       0.0,
   ])
+
+
+_REFERENCE_FRACTIONS = ((0.3137, 0.4271), (0.6173, 0.2719), (0.2311, 0.7193))
+
+
+def root_reference_point(
+    root_element: shaping_elements.ShapingElement,
+) -> tuple[float, float] | None:
+  """Returns a deterministic interior paper point of `root_element`.
+
+  Uses off-grid fractional offsets so the point avoids box-pleating creases and
+  pins the posture frame normal (`+z`) to the top side of a consistent root
+  face even after pre-shaping changes face ordering.
+
+  Args:
+    root_element: Root shaping flap or river.
+
+  Returns:
+    `(x, y)` inside `root_element`, or `None` if no candidate lies strictly
+    inside.
+  """
+  if isinstance(root_element, shaping_elements.ShapingRiver):
+    rectangles = list(root_element.covering_rectangles)
+  else:
+    rectangles = [root_element.to_legacy_rectangle()]
+  for rectangle in rectangles:
+    for fx, fy in _REFERENCE_FRACTIONS:
+      x = rectangle.x_start + fx * rectangle.x_len
+      y = rectangle.y_start + fy * rectangle.y_len
+      point = point_utils.Point(x=x, y=y, require_on_paper=False)
+      if root_element.is_internal_point(point, strict=True):
+        return (x, y)
+  return None
+
+
+def _point_in_face(point: np.ndarray, polygon: np.ndarray) -> bool:
+  """Returns whether 2D `point` lies inside `polygon` via even-odd ray cast."""
+  inside = False
+  num_verts = len(polygon)
+  for i in range(num_verts):
+    (x1, y1), (x2, y2) = polygon[i], polygon[(i + 1) % num_verts]
+    if (y1 > point[1]) != (y2 > point[1]):
+      if point[0] < x1 + (point[1] - y1) * (x2 - x1) / (y2 - y1):
+        inside = not inside
+  return inside
+
+
+def _is_root_reference_flipped(
+    root_element: shaping_elements.ShapingElement,
+    graph_data: geometric_simple_fold.GraphData,
+) -> bool:
+  """Returns whether the face containing `root_reference_point` is flipped.
+
+  `prepare_graph_data` orients its folded frame with face 0 face-up, whose
+  identity can change when pre-shaping inserts creases. Anchoring the posture
+  normal to `root_reference_point` keeps handedness and mountain/valley signs
+  invariant to face reindexing.
+
+  Args:
+    root_element: Root shaping element.
+    graph_data: Flat-folded graph data of the crease pattern.
+
+  Returns:
+    `True` if the root reference face is flipped relative to face 0.
+  """
+  reference = root_reference_point(root_element)
+  if reference is None or not graph_data['vertices_coords']:
+    return False
+  vertices = np.asarray(graph_data['vertices_coords'], dtype=float)
+  point = np.asarray(reference, dtype=float)
+  if float(vertices.max()) > 1.5 >= float(point.max()):
+    point = point * root_element.grid_size
+  orientations = graph_data['face_orientations']
+  for index, face in enumerate(graph_data['face_vertices']):
+    if _point_in_face(point, vertices[face]):
+      return bool(orientations[index])
+  return False
 
 
 def _rotate_simple_fold_direction_by_model_orientation(
@@ -324,20 +416,147 @@ def _rotate_simple_fold_direction_by_model_orientation(
     stick_figure: sf_utils.StickFigure,
     graph_data: geometric_simple_fold.GraphData,
     folded_verts: list[tuple[float, float] | None],
+    *,
+    root_flipped: bool | None = None,
 ) -> np.ndarray:
-  """Rotates the simple fold direction to match the fold orientation."""
-  root_element_orientation = _get_root_element_orientation(
+  """Maps a cut-line direction from the posture frame into folded 2D space.
+
+  In the posture frame, the root stick points along `+y` and the root reference
+  face normal defines `+z` (`+x = +y x +z`). When `root_flipped` is false and
+  the folded root points upward (`uy < 0` in top-down `(x, y)` coordinates),
+  mapping `+x` onto the right side of the folded root requires negating `x`
+  before rotating `(0, 1)` onto `(ux, uy)` — matching the legacy 180-degree
+  x-axis flip for `(0, -1)` while leaving `uy >= 0` (`(0, +1)` and horizontal
+  roots) unnegated.
+
+  Args:
+    simple_fold_direction: Direction vector in the posture frame (`z` ignored).
+    root_element: Root element of the shaping element tree.
+    stick_figure: Stick figure defining root orientation.
+    graph_data: Flat-folded graph data for the crease pattern.
+    folded_verts: Flat-folded vertex coordinates.
+    root_flipped: Precomputed `_is_root_reference_flipped` flag, or `None` to
+      compute on demand.
+
+  Returns:
+    3D direction vector `(dx, dy, 0.0)` in the flat-folded frame.
+  """
+  root_orientation = _get_root_element_orientation(
       root_element, stick_figure, graph_data, folded_verts
   )
-  logging.info('root_element_orientation: %s', root_element_orientation)
-  # Rotate root_element_orientation to align it with positive y-axis.
-  rotation_matrix = angle_utils.get_rotation_matrix_to_align(
-      vec_start=root_element_orientation, vec_target=np.array([0, 1, 0])
+  logging.info('root_element_orientation: %s', root_orientation)
+  if root_flipped is None:
+    root_flipped = _is_root_reference_flipped(root_element, graph_data)
+  px = float(simple_fold_direction[0])
+  py = float(simple_fold_direction[1])
+  rx, ry = float(root_orientation[0]), float(root_orientation[1])
+  norm = math.hypot(rx, ry)
+  if norm < 1e-12:
+    if not root_flipped:
+      px = -px
+    return np.array([px, py, 0.0])
+  ux, uy = rx / norm, ry / norm
+  if not root_flipped and uy < 0:
+    px = -px
+  rotated = np.array([uy * px + ux * py, -ux * px + uy * py, 0.0])
+  logging.info('new_simple_fold_direction: %s', rotated)
+  return rotated
+
+
+def _element_folded_direction(
+    element: shaping_elements.ShapingFlap,
+    graph_data: geometric_simple_fold.GraphData,
+    folded_verts: list[tuple[float, float] | None],
+) -> np.ndarray | None:
+  """Returns the proximal-to-distal 2D direction of a flap on the folded base."""
+  try:
+    boundary = shaping_elements.get_shaping_boundary(
+        element, boundary_index=None
+    )
+    tips = boundary.tips
+    point, edge_index = boundary.creases[0].p1_init, 0
+    for _ in range(boundary.num_walk_steps_upper_bound(element.grid_size)):
+      point, edge_index = boundary.walk(point, edge_index, element.grid_size)
+      if point.on_paper and all(not point.isclose(tip) for tip in tips):
+        break
+    if not point.on_paper:
+      return None
+    edge_index = boundary.get_edge_index(point)
+    if edge_index is None:
+      return None
+    inner = boundary.depth_unit_vectors[edge_index].point_add(point)
+    start_folded = geometric_utils.get_folded_pos(
+        point=point,
+        unfolded_coords=graph_data['vertices_coords'],
+        folded_coords=folded_verts,
+        edge_vertices=graph_data['edge_vertices'],
+        face_vertices=graph_data['face_vertices'],
+    )
+    end_folded = geometric_utils.get_folded_pos(
+        point=inner,
+        unfolded_coords=graph_data['vertices_coords'],
+        folded_coords=folded_verts,
+        edge_vertices=graph_data['edge_vertices'],
+        face_vertices=graph_data['face_vertices'],
+    )
+  except (AssertionError, ValueError, IndexError, KeyError) as error:
+    logging.info('No folded direction for %s: %s', element.name, error)
+    return None
+  if start_folded is None or end_folded is None:
+    return None
+  return np.array(
+      [end_folded[0] - start_folded[0], end_folded[1] - start_folded[1]],
+      dtype=float,
   )
-  # Apply the inverse rotation to the simple fold direction.
-  new_simple_fold_direction = rotation_matrix @ simple_fold_direction
-  logging.info('new_simple_fold_direction: %s', new_simple_fold_direction)
-  return new_simple_fold_direction
+
+
+def _measured_base_signs(
+    elements: Sequence[shaping_elements.ShapingElement],
+    root_element: shaping_elements.ShapingElement,
+    stick_figure: sf_utils.StickFigure,
+    graph_data: geometric_simple_fold.GraphData,
+) -> dict[str, float]:
+  """Measures `+1` / `-1` alignment of non-root flaps with the folded root."""
+  folded_verts = graph_data['folded_vertices']
+  try:
+    root_dir = _get_root_element_orientation(
+        root_element, stick_figure, graph_data, folded_verts
+    )[:2]
+  except (AssertionError, ValueError, IndexError, KeyError) as error:
+    logging.warning(
+        'No measured base directions (root orientation: %s).', error
+    )
+    return {}
+  root_norm = float(np.linalg.norm(root_dir))
+  if root_norm < 1e-9:
+    return {}
+  root_unit = root_dir / root_norm
+
+  signs: dict[str, float] = {}
+  for element in elements:
+    # Only measure branching flaps: river bank indices do not distinguish the
+    # proximal bank, and interior degree-<=2 chain sub-flaps inherit their
+    # parent flap's direction directly.
+    if element.name == root_element.name or not isinstance(
+        element, shaping_elements.ShapingFlap
+    ):
+      continue
+    if element.name in stick_figure:
+      stick = stick_figure[element.name]
+      if all(
+          stick_figure.joints[j].degree <= 2 for j in (stick.start, stick.end)
+      ):
+        continue
+    direction = _element_folded_direction(element, graph_data, folded_verts)
+    if direction is None:
+      continue
+    dir_norm = float(np.linalg.norm(direction))
+    if dir_norm < 1e-9:
+      continue
+    cosine = float(np.dot(direction, root_unit)) / dir_norm
+    if abs(cosine) >= 0.7:
+      signs[element.name] = math.copysign(1.0, cosine)
+  return signs
 
 
 def _get_shaping_creases(
@@ -460,6 +679,7 @@ def _get_shaping_creases_with_heuristics(
     visualize: bool = False,
     inscribe_hparams: InscribeHParams = InscribeHParams(),
     extra_limiting_rectangles: Sequence[shaping_utils.Rectangle] = (),
+    root_flipped: bool | None = None,
 ) -> tuple[
     Sequence[crease_utils.Crease], shaping_elements.ShapingElement, bool
 ]:
@@ -483,6 +703,7 @@ def _get_shaping_creases_with_heuristics(
       visualize: Whether to visualize the cut line on the folded crease pattern.
       inscribe_hparams: Parameters controlling cut line inscription depth.
       extra_limiting_rectangles: Other rectangles to propagate creases to.
+      root_flipped: Whether the root element face orientation is flipped.
 
   Returns:
       A tuple containing:
@@ -551,6 +772,7 @@ def _get_shaping_creases_with_heuristics(
       stick_figure,
       graph_data,
       folded_verts,
+      root_flipped=root_flipped,
   )
 
   bank_index = (
@@ -625,6 +847,7 @@ def shape_element_with_3d_geometric_folding_heuristics(
     visualize: bool = False,
     graph_data: geometric_simple_fold.GraphData | None = None,
     extra_limiting_rectangles: Sequence[shaping_utils.Rectangle] = (),
+    root_flipped: bool | None = None,
 ) -> ElementShapingResult:
   """Shapes a single element with 3D geometric folding heuristics.
 
@@ -649,6 +872,8 @@ def shape_element_with_3d_geometric_folding_heuristics(
       graph_data: Precomputed graph data for the crease pattern. If None, it
         will be computed from base_cp.
       extra_limiting_rectangles: Other rectangles to propagate creases to.
+      root_flipped: Optional override indicating whether the root face is
+        flipped.
 
   Returns:
       A list of ElementShapingResult objects, one for each successful fold
@@ -697,11 +922,11 @@ def shape_element_with_3d_geometric_folding_heuristics(
   )
 
   # 3. Try geometric folding with both hinge points as the anchor.
-  # NOTE: Check this assignment.
+  if root_flipped is None:
+    root_flipped = _is_root_reference_flipped(root_element, graph_data)
+  toward_normal = (simple_fold_info.rotation_angle > 0) != root_flipped
   fold_assignment = (
-      crease_utils.Fold.MOUNTAIN
-      if simple_fold_info.rotation_angle > 0
-      else crease_utils.Fold.VALLEY
+      crease_utils.Fold.VALLEY if toward_normal else crease_utils.Fold.MOUNTAIN
   )
 
   simple_fold_direction = simple_fold_info.rotation_axis_local
@@ -732,6 +957,7 @@ def shape_element_with_3d_geometric_folding_heuristics(
             inscribe_hparams=inscribe_hparams,
             rotation_angle=simple_fold_info.rotation_angle,
             extra_limiting_rectangles=extra_limiting_rectangles,
+            root_flipped=root_flipped,
         )
     )
     if shaping_creases:
@@ -768,36 +994,32 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
 ) -> Heuristics3DShapingResult:
   """Returns shaping creases using 3D geometric folding heuristics.
 
-  The heuristic proceeds in several steps:
-  1. Find a good stick figure root and rotate the stick figure so that the root
-    has 0 elevation and 0 azimuth.
-  2. Compute flap info dict for each shaping element. This determines element
-    orientation in the base crease pattern.
-  3. Compute each element's local cooridnate shaping rotation using 3D
-    folding heuristics.
-  4. Combine each element's local coordinate rotation with geometric simple
-    folds to obtain the final shaping creases.
+  Aligns the stick figure root to zero azimuth and elevation, resolves flap fold
+  states (optionally cross-checked against measured folded-base directions),
+  computes local 3D simple-fold rotations with fixed-point propagation for
+  unrotated parents, and maps each cut line back to the unfolded paper.
 
   Args:
-      base_cp: The base crease pattern.
-      stick_figure: The stick figure.
-      shaping_flaps: The shaping flaps.
-      shaping_rivers: The shaping rivers.
-      hinge_info_list: The list of hinge info.
-      central_crease_removed: Whether the central crease has been removed.
-      shape_with_unmerged_tree: Whether to shape with unmerged tree.
-      merge_converter: The merge converter.
-      visualize: Whether to visualize the cut line on the folded CP.
-      hparams: Hyperparameters controlling heuristic behavior.
-      graph_data: Precomputed graph data for the crease pattern.
-      shaping_data: Precomputed shaping data for the crease pattern.
-      sacrificial_flaps: All sacrificial flaps in the crease pattern.
+    base_cp: Base crease pattern to shape.
+    stick_figure: Target 3D stick figure.
+    shaping_flaps: Candidate shaping flaps.
+    shaping_rivers: Candidate shaping rivers.
+    hinge_info_list: Hinge placement and assignment info.
+    central_crease_removed: Whether the central symmetry crease was removed.
+    shape_with_unmerged_tree: Whether to shape sub-elements of merged chains.
+    merge_converter: Mapping from unmerged stick names to merged stick names.
+    visualize: Whether to plot candidate cut lines on the folded state.
+    hparams: Hyperparameters controlling heuristic behavior.
+    graph_data: Optional precomputed flat-folded graph data for `base_cp`.
+    shaping_data: Optional precomputed `ShapingData`.
+    sacrificial_flaps: Sacrificial flaps sharing creases with active flaps.
 
   Returns:
-      A Heuristics3DShapingResult containing:
-        - shaping_creases: The shaping creases for the crease pattern.
-        - detailed_shaping_info: A dictionary mapping element names to a list of
-          element shaping results.
+    A `Heuristics3DShapingResult` with accepted shaping creases and per-element
+    diagnostic entries.
+
+  Raises:
+    ValueError: If the flat-folded graph of `base_cp` cannot be constructed.
   """
   logging.info(
       'Getting shaping creases for %s with 3D geometric folding heuristics.',
@@ -823,12 +1045,10 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
           ):
             symmetric_partners[s.name] = s.symmetric_stick_name
 
-  # 0. Compute a good stick_figure root and assign it.
   root = heuristics.get_first_stick_for_shaping(stick_figure)
   stick_figure = dataclasses.replace(stick_figure, root=root.name)
   stick_figure = stick_figure.align_root_stick_to_target_azimuth_elevation()
 
-  # 1. Compute flap info dict.
   if shaping_data is None:
     shaping_data = heuristics_utils.get_heuristics_shaping_data(
         stick_figure=stick_figure,
@@ -844,9 +1064,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
   shaping_rivers = shaping_data['shaping_rivers']
   flap_info_dict = shaping_data['flap_info']
   outer_bank_indices = shaping_data['outer_bank_indices']
-  logging.debug('flap_info_dict: %s', flap_info_dict)
 
-  # 2. Update shaping rivers outer_bank_indices.
   shaping_rivers = [
       shaping_river.update_outer_bank_index(
           cast(shaping_types.BankIndex, outer_bank_indices[shaping_river.name])
@@ -856,17 +1074,8 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
 
   flap_strategies = {flap.name: hparams.strategy for flap in shaping_flaps}
   flap_strategies.update(hparams.per_flap_strategy)
-  simple_fold_info_dict = heuristics_3d.get_flap_post_dict(
-      stick_figure,
-      flap_info_dict,
-      make_post_hinge_top=True,
-      default_strategy=hparams.strategy,
-      flap_strategies=flap_strategies,
-      max_slope_thresh=hparams.default_inscribe_hparams.max_slope_thresh,
-  )
 
-  # 4. Compute shaping creases for each element.
-  elements = shaping_flaps + shaping_rivers
+  elements = list(shaping_flaps) + list(shaping_rivers)
   root_element = shaping_elements.get_element_by_name(
       stick_figure.root, shaping_flaps, shaping_rivers
   )
@@ -874,6 +1083,9 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
     elements = [
         element for element in elements if element.name in hparams.shape_subset
     ]
+  if hparams.priority:
+    priority_rank = {name: i for i, name in enumerate(hparams.priority)}
+    elements.sort(key=lambda e: priority_rank.get(e.name, len(priority_rank)))
   shaping_flaps_by_name = {flap.name: flap for flap in shaping_flaps}
   elements_by_name = {element.name: element for element in elements}
   if is_input_symmetric:
@@ -892,138 +1104,219 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
         for k, v in symmetric_partners.items()
         if k in elements_by_name and v in elements_by_name
     }
+
   if graph_data is None:
     graph_data = geometric_simple_fold.prepare_graph_data(base_cp)
-  accepted_creases_by_element: dict[str, list[crease_utils.Crease]] = {}
-  discarded_partners: dict[str, str] = {}
-  detailed_shaping_info = {}
-  current_cp = base_cp
-
-  def _rollback_partner(partner_name: str, failed_name: str) -> None:
-    nonlocal current_cp, accepted_creases_by_element
-    if partner_name in accepted_creases_by_element:
-      accepted_creases_by_element.pop(partner_name, None)
-      detailed_shaping_info.pop(partner_name, None)
-      logging.warning(
-          'Flat foldability violation detected after shaping element: %s. '
-          'Discarding creases for this element (symmetric partner %s failed).',
-          partner_name,
-          failed_name,
-      )
-      rebuilt_cp = base_cp
-      if hparams.check_ff_violations:
-        surviving: dict[str, list[crease_utils.Crease]] = {}
-        for kept_name, kept_creases in accepted_creases_by_element.items():
-          if not kept_creases:
-            surviving[kept_name] = kept_creases
-            continue
-          cand_cp = rebuilt_cp.update_with_shaping_creases(kept_creases)
-          if cand_cp.local_flat_foldability():
-            rebuilt_cp = cand_cp
-            surviving[kept_name] = kept_creases
-          else:
-            detailed_shaping_info.pop(kept_name, None)
-        accepted_creases_by_element = surviving
-      current_cp = rebuilt_cp
-    else:
-      discarded_partners[partner_name] = failed_name
-
-  for element in elements:
-    logging.info(
-        'Shaping element: %s with 3D geometric folding heuristics.',
-        element.name,
+  if not graph_data['vertices_coords']:
+    raise ValueError(
+        'The flat-folded graph of the pattern could not be built (sweep-line'
+        ' graph creation failed); the 3D heuristics cannot place cut lines.'
     )
-    if element.name in discarded_partners:
-      failed_partner = discarded_partners[element.name]
-      logging.warning(
-          'Flat foldability violation detected after shaping element: %s. '
-          'Discarding creases for this element (symmetric partner %s failed).',
-          element.name,
-          failed_partner,
-      )
-      continue
-    if element.name not in simple_fold_info_dict:
-      logging.warning(
-          'No simple fold info found for element: %s. Skipping.', element.name
-      )
-      continue
-    simple_fold_infos = simple_fold_info_dict[element.name]
-    element_creases = []
-    element_had_assertion_failure = False
-    extra_limiting_rectangles = [
-        shaping_flaps_by_name[sac_flap].to_legacy_rectangle()
-        for sac_flap in flap_info_dict[element.name].sacrificial_flaps
-    ]
-    for simple_fold_info in simple_fold_infos:
-      logging.info('simple_fold_info: %s', simple_fold_info)
-      # NOTE: consider increasing min angle tolerance.
-      if math.isclose(simple_fold_info.rotation_angle, 0.0, abs_tol=1e-3):
-        logging.info(
-            'Skipping element: %s with 0 rotation angle.',
-            element.name,
-        )
-        continue
-      try:
-        element_output = shape_element_with_3d_geometric_folding_heuristics(
-            element=element,
-            base_cp=base_cp,
-            simple_fold_info=simple_fold_info,
-            hinge_info_list=hinge_info_list,
-            root_element=root_element,
-            stick_figure=stick_figure,
-            visualize=visualize,
-            inscribe_hparams=dataclasses.replace(
-                hparams.default_inscribe_hparams,
-                inscribe_depth=simple_fold_info.inscribe_depth,
-                hinge_inscribe_depth=hparams.per_flap_hinge_inscribe_depth.get(
-                    element.name,
-                    hparams.default_inscribe_hparams.hinge_inscribe_depth,
-                ),
-            ),
-            graph_data=graph_data,
-            extra_limiting_rectangles=extra_limiting_rectangles,
-        )
-        element_creases.extend(element_output['shaping_creases'])
-        if element.name not in detailed_shaping_info:
-          detailed_shaping_info[element.name] = []
-        detailed_shaping_info[element.name].append(element_output)
-      except AssertionError as e:
-        element_had_assertion_failure = True
-        logging.warning(
-            'Failed to shape element: %s with 3D geometric folding heuristics. '
-            'Simple fold info: %s. '
-            'Skipping. Error: %s',
-            element.name,
-            simple_fold_info.rotation_axis_local,
-            e,
-        )
-    if element_had_assertion_failure and element.name in symmetric_partners:
-      detailed_shaping_info.pop(element.name, None)
-      logging.warning(
-          'Flat foldability violation detected after shaping element: %s. '
-          'Discarding creases for this element (symmetric failure).',
-          element.name,
-      )
-      _rollback_partner(symmetric_partners[element.name], element.name)
-      continue
-    if hparams.check_ff_violations and element_creases:
-      updated_cp = current_cp.update_with_shaping_creases(element_creases)
-      if not updated_cp.local_flat_foldability():
-        logging.warning(
-            'Flat foldability violation detected after shaping element: %s. '
-            'Discarding creases for this element.',
-            element.name,
-        )
-        detailed_shaping_info.pop(element.name, None)
-        if element.name in symmetric_partners:
-          _rollback_partner(symmetric_partners[element.name], element.name)
-        continue
-      current_cp = updated_cp
-    accepted_creases_by_element[element.name] = element_creases
 
+  root_flipped = _is_root_reference_flipped(root_element, graph_data)
+  base_signs = None
+  if hparams.measure_base_directions:
+    base_signs = _measured_base_signs(
+        list(shaping_flaps) + list(shaping_rivers),
+        root_element,
+        stick_figure,
+        hparams.direction_graph_data or graph_data,
+    )
+
+  def _shape_elements_once(
+      simple_fold_info_dict: dict[str, Sequence[heuristics_3d.SimpleFoldInfo]],
+  ) -> tuple[
+      list[crease_utils.Crease],
+      dict[str, list[ElementShapingResult]],
+      list[tuple[object, ...]],
+  ]:
+    accepted_creases_by_element: dict[str, list[crease_utils.Crease]] = {}
+    discarded_partners: dict[str, str] = {}
+    detailed_shaping_info: dict[str, list[ElementShapingResult]] = {}
+    pending_warnings: list[tuple[object, ...]] = []
+    current_cp = base_cp
+
+    def _rollback_partner(partner_name: str, failed_name: str) -> None:
+      nonlocal current_cp, accepted_creases_by_element
+      if partner_name in accepted_creases_by_element:
+        accepted_creases_by_element.pop(partner_name, None)
+        detailed_shaping_info.pop(partner_name, None)
+        pending_warnings.append((
+            (
+                'Flat foldability violation detected after shaping element: %s.'
+                ' Discarding creases for this element (symmetric partner %s'
+                ' failed).'
+            ),
+            partner_name,
+            failed_name,
+        ))
+        rebuilt_cp = base_cp
+        if hparams.check_ff_violations:
+          surviving: dict[str, list[crease_utils.Crease]] = {}
+          for kept_name, kept_creases in accepted_creases_by_element.items():
+            if not kept_creases:
+              surviving[kept_name] = kept_creases
+              continue
+            cand_cp = rebuilt_cp.update_with_shaping_creases(kept_creases)
+            if cand_cp.local_flat_foldability():
+              rebuilt_cp = cand_cp
+              surviving[kept_name] = kept_creases
+            else:
+              detailed_shaping_info.pop(kept_name, None)
+          accepted_creases_by_element = surviving
+        current_cp = rebuilt_cp
+      else:
+        discarded_partners[partner_name] = failed_name
+
+    for element in elements:
+      if element.name in discarded_partners:
+        pending_warnings.append((
+            (
+                'Flat foldability violation detected after shaping element: %s.'
+                ' Discarding creases for this element (symmetric partner %s'
+                ' failed).'
+            ),
+            element.name,
+            discarded_partners[element.name],
+        ))
+        continue
+      if element.name not in simple_fold_info_dict:
+        pending_warnings.append((
+            'No simple fold info found for element: %s. Skipping.',
+            element.name,
+        ))
+        continue
+      simple_fold_infos = simple_fold_info_dict[element.name]
+      element_creases: list[crease_utils.Crease] = []
+      element_had_assertion_failure = False
+      extra_limiting_rectangles = [
+          shaping_flaps_by_name[sac_flap].to_legacy_rectangle()
+          for sac_flap in flap_info_dict[element.name].sacrificial_flaps
+      ]
+      hinge_inscribe_depth = hparams.per_flap_hinge_inscribe_depth.get(
+          element.name,
+          hparams.default_inscribe_hparams.hinge_inscribe_depth,
+      )
+      for simple_fold_info in simple_fold_infos:
+        if math.isclose(simple_fold_info.rotation_angle, 0.0, abs_tol=1e-3):
+          continue
+        try:
+          element_output = shape_element_with_3d_geometric_folding_heuristics(
+              element=element,
+              base_cp=base_cp,
+              simple_fold_info=simple_fold_info,
+              hinge_info_list=hinge_info_list,
+              root_element=root_element,
+              stick_figure=stick_figure,
+              visualize=visualize,
+              inscribe_hparams=dataclasses.replace(
+                  hparams.default_inscribe_hparams,
+                  inscribe_depth=simple_fold_info.inscribe_depth,
+                  hinge_inscribe_depth=hinge_inscribe_depth,
+              ),
+              graph_data=graph_data,
+              extra_limiting_rectangles=extra_limiting_rectangles,
+              root_flipped=root_flipped,
+          )
+          element_creases.extend(element_output['shaping_creases'])
+          if element.name not in detailed_shaping_info:
+            detailed_shaping_info[element.name] = []
+          detailed_shaping_info[element.name].append(element_output)
+        except AssertionError as e:
+          element_had_assertion_failure = True
+          pending_warnings.append((
+              (
+                  'Failed to shape element: %s with 3D geometric folding'
+                  ' heuristics. Simple fold info: %s. Skipping. Error: %s'
+              ),
+              element.name,
+              simple_fold_info.rotation_axis_local,
+              e,
+          ))
+      if element_had_assertion_failure and element.name in symmetric_partners:
+        detailed_shaping_info.pop(element.name, None)
+        pending_warnings.append((
+            (
+                'Flat foldability violation detected after shaping element: %s.'
+                ' Discarding creases for this element (symmetric failure).'
+            ),
+            element.name,
+        ))
+        _rollback_partner(symmetric_partners[element.name], element.name)
+        continue
+      if hparams.check_ff_violations and element_creases:
+        updated_cp = current_cp.update_with_shaping_creases(element_creases)
+        if not updated_cp.local_flat_foldability():
+          pending_warnings.append((
+              (
+                  'Flat foldability violation detected after shaping element:'
+                  ' %s. Discarding creases for this element.'
+              ),
+              element.name,
+          ))
+          detailed_shaping_info.pop(element.name, None)
+          if element.name in symmetric_partners:
+            _rollback_partner(symmetric_partners[element.name], element.name)
+          continue
+        current_cp = updated_cp
+      accepted_creases_by_element[element.name] = element_creases
+
+    shaping_creases: list[crease_utils.Crease] = []
+    for creases in accepted_creases_by_element.values():
+      shaping_creases.extend(creases)
+    return shaping_creases, detailed_shaping_info, pending_warnings
+
+  unrotated: set[str] = set()
+  if hparams.shape_subset is not None:
+    unrotated = {stick.name for stick in stick_figure.children} - set(
+        hparams.shape_subset
+    )
   shaping_creases: list[crease_utils.Crease] = []
-  for creases in accepted_creases_by_element.values():
-    shaping_creases.extend(creases)
+  detailed_shaping_info: dict[str, list[ElementShapingResult]] = {}
+  warnings_to_log: list[tuple[object, ...]] = []
+  for _ in range(_MAX_UNROTATED_PASSES):
+    simple_fold_info_dict = heuristics_3d.get_flap_post_dict(
+        stick_figure,
+        flap_info_dict,
+        make_post_hinge_top=True,
+        default_strategy=hparams.strategy,
+        flap_strategies=flap_strategies,
+        max_slope_thresh=hparams.default_inscribe_hparams.max_slope_thresh,
+        unrotated=unrotated,
+        base_signs=base_signs,
+    )
+    shaping_creases, detailed_shaping_info, warnings_to_log = (
+        _shape_elements_once(simple_fold_info_dict)
+    )
+    shaped = {
+        name
+        for name, infos in detailed_shaping_info.items()
+        if any(info['shaping_creases'] for info in infos)
+    }
+    left_out = {
+        element.name
+        for element in elements
+        if element.name not in shaped
+        and element.name in flap_info_dict
+        and any(
+            not math.isclose(info.rotation_angle, 0.0, abs_tol=1e-3)
+            for info in simple_fold_info_dict.get(element.name, ())
+        )
+    }
+    newly_unrotated = {
+        name
+        for name in left_out - unrotated
+        if shaped.intersection(
+            heuristics.get_descendants_names(flap_info_dict, name)
+        )
+    }
+    if not newly_unrotated:
+      break
+    unrotated |= newly_unrotated
+
+  for warning_args in warnings_to_log:
+    logging.warning(*warning_args)
+
   return Heuristics3DShapingResult(
       shaping_creases=shaping_creases,
       detailed_shaping_info=detailed_shaping_info,
@@ -1051,7 +1344,8 @@ def shape_cp_with_3d_geometric_folding_heuristics_pipeline_wrapper(
   """Shapes a crease pattern using 3D geometric folding heuristics."""
   if shaping_flaps is None or shaping_rivers is None:
     packing_cp = packing_output.packing_cp
-    assert packing_cp is not None, 'Packing CP is None.'
+    if packing_cp is None:
+      raise ValueError('packing_output.packing_cp must not be None.')
     shaping_flaps, shaping_rivers = (
         shaping_elements.convert_packing_elements_to_shaping_elements(
             packing_rectangles=packing_output.flap_rectangles,  # pyrefly: ignore[bad-argument-type]

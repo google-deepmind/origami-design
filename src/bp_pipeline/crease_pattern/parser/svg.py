@@ -365,7 +365,9 @@ def _add_line_element(
   ):
     attrs['stroke-dasharray'] = dash_value
   if line.mountain_or_valley() and line.fold_percent < 1:
-    attrs['opacity'] = parser_utils.point_format(line.fold_percent, 1, ndigits)
+    attrs['opacity'] = parser_utils.point_format(
+        line.fold_percent, 1, max(ndigits, 6)
+    )
   if not omit_fold_step and line.fold_step > 0:
     attrs['fold-step'] = str(line.fold_step)
   if line.elevation is not None:
@@ -535,7 +537,7 @@ def to_svg(
     pattern: crease_pattern.CreasePattern,
     *,
     scale: float = 1000,
-    ndigits: int = 3,
+    ndigits: int | None = None,
     grid: int = -1,
     pretty: bool = False,
     replace_border: bool = False,
@@ -551,11 +553,11 @@ def to_svg(
   Args:
     pattern: The CreasePattern object to convert.
     scale: The scale factor to apply to the coordinates.
-    ndigits: The number of significant digits to round values to.
+    ndigits: The number of decimal digits to round values to. Defaults to 1 when
+      `grid > 0` and 3 when `grid == -1`; pass a larger value (e.g. 8) to
+      preserve off-grid 3D-shaped vertex coordinates on a grid viewBox.
     grid: The size of the grid to use. When a grid is used, the viewbox is set
-      to (0, 0, grid, grid), scale is set to 1, and ndigits is set to 1. Each
-      point is multiplied by the grid size and rounded to the nearest integer,
-      so each point is spaced exactly grid points apart. If -1, no grid is used.
+      to (0, 0, grid, grid) and scale is set to 1. If -1, no grid is used.
     pretty: Prettify the SVG string.
     replace_border: Replace the border with a square <rect> element.
     shuffle_order: Shuffle the order of the creases in the SVG.
@@ -570,7 +572,10 @@ def to_svg(
   """
   if grid > 0:
     scale = 1
-    ndigits = 1
+    if ndigits is None:
+      ndigits = 1
+  elif ndigits is None:
+    ndigits = 3
   root = to_element_tree(
       pattern,
       scale=scale,

@@ -22,6 +22,7 @@ from typing import Any
 if typing.TYPE_CHECKING:
   from . import bps_types
   from . import cli
+  from . import folder_3d
   from . import rectangle
   from . import render_3d
   from . import render_summary
@@ -32,6 +33,7 @@ if typing.TYPE_CHECKING:
 _LAZY_SUBMODULES = frozenset({
     'bps_types',
     'cli',
+    'folder_3d',
     'rectangle',
     'render_3d',
     'render_summary',
@@ -45,9 +47,12 @@ _API_EXPORTS = frozenset({
     'DEFAULT_SOLVER_CONFIG',
     'DEFAULT_SVG_COLORS',
     'DesignTree',
+    'FidelityConfig',
+    'FidelityReport',
     'Fold',
     'FoldStrategy3D',
     'FoldedMesh3D',
+    'FoldedModel',
     'PRODUCTION_SWEEP',
     'PackedCreasePattern',
     'PackerOptions',
@@ -72,7 +77,9 @@ _API_EXPORTS = frozenset({
     'StickFigure',
     'build_folded_mesh_3d',
     'dumps',
+    'evaluate_fidelity',
     'fold',
+    'fold_3d',
     'from_bp_studio',
     'from_dict',
     'from_fold',

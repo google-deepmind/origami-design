@@ -30,6 +30,7 @@ import numpy as np
 
 from . import bps_types
 from . import bus
+from . import folder_3d as fold_3d
 from . import rectangle as rectangle_lib
 from .crease_pattern import crease as crease_lib
 from .crease_pattern import crease_pattern as cp_lib
@@ -1201,78 +1202,12 @@ def save_svg(
   _write_text(path_or_file, svg_str)
 
 
-def _polygon_signed_double_area(
-    face_indices: Sequence[int],
-    vertices_coords: Sequence[Sequence[float]],
-) -> float:
-  """Returns twice the signed area of the polygon defined by `face_indices`."""
-  if len(face_indices) < 3:
-    return 0.0
-  area2 = 0.0
-  n = len(face_indices)
-  for idx in range(n):
-    x1, y1 = vertices_coords[face_indices[idx]]
-    x2, y2 = vertices_coords[face_indices[(idx + 1) % n]]
-    area2 += x1 * y2 - x2 * y1
-  return area2
-
-
 def compute_faces_vertices(
     vertices_coords: Sequence[Sequence[float]],
     edges_vertices: Sequence[Sequence[int]],
 ) -> list[list[int]]:
-  """Computes counter-clockwise planar `faces_vertices` from vertices and edges."""
-  num_verts = len(vertices_coords)
-  adj: list[list[int]] = [[] for _ in range(num_verts)]
-  for u, v in edges_vertices:
-    if u != v and v not in adj[u]:
-      adj[u].append(v)
-    if u != v and u not in adj[v]:
-      adj[v].append(u)
-
-  for v in range(num_verts):
-    if not adj[v]:
-      continue
-    x0, y0 = vertices_coords[v]
-    adj[v].sort(
-        key=lambda nbr, cx=x0, cy=y0: math.atan2(
-            vertices_coords[nbr][1] - cy,
-            vertices_coords[nbr][0] - cx,
-        )
-    )
-
-  next_half_edge: dict[tuple[int, int], int | None] = {}
-  for v, neighbors in enumerate(adj):
-    if not neighbors:
-      continue
-    deg = len(neighbors)
-    for idx, u in enumerate(neighbors):
-      next_half_edge[(u, v)] = neighbors[(idx - 1) % deg]
-
-  faces: list[list[int]] = []
-  for half_edge in list(next_half_edge):
-    w = next_half_edge[half_edge]
-    if w is None:
-      continue
-    u, v = half_edge
-    next_half_edge[half_edge] = None
-    face = [u, v]
-    start = u
-    valid = True
-    while w != start:
-      if w is None or len(face) > len(next_half_edge) + 2:
-        valid = False
-        break
-      face.append(w)
-      step_edge = (v, w)
-      v, w = w, next_half_edge.get(step_edge)
-      next_half_edge[step_edge] = None
-    if valid and (face[-1], face[0]) in next_half_edge:
-      next_half_edge[(face[-1], face[0])] = None
-      if _polygon_signed_double_area(face, vertices_coords) > 1e-9:
-        faces.append(face[::-1])
-
-  return faces
+  """Computes bounded planar `faces_vertices` from vertices and edges."""
+  return fold_3d.extract_planar_faces(vertices_coords, edges_vertices)
 
 
 def to_fold(
