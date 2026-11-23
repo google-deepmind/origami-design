@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>COrigami Studio</title>
+  <meta name="description" content="Interactive 3D gallery of precomputed box-pleated origami showcase models and viewer for bp-pipeline shaped_3d.fold files.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 22 8.5 12 15 2 8.5z' fill='%23b83a2d'/%3E%3Cpath d='M2 13l10 6.5L22 13 12 22z' fill='%231d4ed8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <!-- three.js is the only external dependency; pin an exact version. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="./">COrigami Studio</a>
+    <span class="tagline">Precomputed showcase models (not regenerable from <code>bp-pipeline</code> alone; no recorded tool history) &middot; drop any <code>shaped_3d.fold</code></span>
+    <nav class="actions">
+      <label class="button primary" title="Open a .fold file with faces and a flat frame, and optionally its stick figure .json">
+        Open .fold
+        <input id="file" type="file" accept=".fold,.json" multiple hidden>
+      </label>
+      <a class="button" href="https://arxiv.org/abs/2606.26299">Paper</a>
+      <a class="button" href="https://github.com/google-deepmind/origami-design">GitHub</a>
+      <button id="theme" class="button" type="button" aria-label="Switch between light and dark theme">◐</button>
+    </nav>
+  </header>
+
+  <main>
+    <nav id="gallery" class="gallery" aria-label="Showcase models"></nav>
+
+    <div class="studio">
+      <section class="card" aria-label="3D model">
+        <div class="viewport">
+          <canvas id="canvas"></canvas>
+          <div id="pins" class="pins" hidden></div>
+          <div class="overlay">
+            <div>
+              <h1 id="title"></h1>
+              <p id="subtitle"></p>
+            </div>
+            <div class="views" role="toolbar" aria-label="Camera">
+              <button type="button" data-view="hero">Hero</button>
+              <button type="button" data-view="side">Side</button>
+              <button type="button" data-view="front">Front</button>
+              <button type="button" data-view="top">Top</button>
+              <label class="chip"><input id="rotate" type="checkbox" checked>Rotate</label>
+            </div>
+          </div>
+          <p id="status" class="status" role="status"></p>
+        </div>
+
+        <div class="dock">
+          <div class="fold-row">
+            <button id="play" class="button primary" type="button">Unfold</button>
+            <input id="fold" type="range" min="0" max="100" step="0.5" value="100" aria-label="Folding progress">
+            <output id="fold-value" for="fold">100%</output>
+            <label class="chip" title="Continuously fold and unfold back and forth"><input id="loop" type="checkbox">Loop</label>
+          </div>
+          <div class="options">
+            <label>Paper <input id="color-top" type="color"></label>
+            <label>Reverse <input id="color-bottom" type="color"></label>
+            <div id="swatches" class="swatches" role="group" aria-label="Washi paper presets"></div>
+            <label class="chip" title="Fold the creases of the solved base first, then those added by shaping"><input id="staged" type="checkbox" checked>Base first</label>
+            <label class="chip"><input id="creases" type="checkbox" checked>Creases</label>
+            <label class="chip" title="Label the tip of each flap"><input id="show-pins" type="checkbox">Labels</label>
+            <label class="chip" title="Make the paper translucent"><input id="xray" type="checkbox">X-ray</label>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card inspector" aria-label="Model details">
+        <div id="tabs" class="tabs" role="tablist">
+          <button type="button" role="tab" data-tab="pattern" aria-selected="true">Crease pattern</button>
+          <button type="button" role="tab" data-tab="base" aria-selected="false" title="The crease pattern without the creases added by shaping">Base</button>
+          <button type="button" role="tab" data-tab="packing" aria-selected="false" title="How the flaps and rivers of the stick figure tile the sheet">Packing</button>
+          <button type="button" role="tab" data-tab="sticks" aria-selected="false">Stick figure</button>
+        </div>
+        <svg id="diagram" class="diagram" role="img"></svg>
+        <p class="legend" data-tabs="pattern base">
+          <span class="mountain">Mountain</span>
+          <span class="valley">Valley</span>
+          Seen from the reverse side of the paper.
+        </p>
+        <p class="legend" data-tabs="packing" hidden>
+          <span class="flap">Flap</span>
+          <span class="river">River</span>
+          Click a region to find it on the model.
+        </p>
+        <p class="legend" data-tabs="sticks" hidden>Turns with the 3D view.</p>
+
+        <dl class="metrics">
+          <div><dt>Grid</dt><dd id="grid"></dd></div>
+          <div><dt>Sticks</dt><dd id="stick-count"></dd></div>
+          <div><dt>Creases</dt><dd id="crease-count"></dd></div>
+          <div title="Mean edge-length error of the folded model"><dt>Strain</dt><dd id="strain"></dd></div>
+        </dl>
+
+        <p id="summary"></p>
+        <ul id="techniques" class="tags"></ul>
+
+        <h2>Flaps and rivers</h2>
+        <div id="regions" class="regions"></div>
+
+        <h2>Downloads</h2>
+        <div class="downloads">
+          <a id="download-fold" class="button" download>Folded model .fold</a>
+          <a id="download-svg" class="button" download="crease_pattern.svg">Crease pattern .svg</a>
+          <a id="download-sticks" class="button" download>Stick figure .json</a>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer>
+    Code under the <a href="https://www.apache.org/licenses/LICENSE-2.0">Apache 2.0</a> license;
+    showcase models and their crease patterns under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.
+    The ten bundled showcase models are precomputed snapshots without recorded sculpting tool histories and cannot be regenerated from <code>bp-pipeline</code> alone.
+    Drop a <code>shaped_3d.fold</code> written by <code>bp-pipeline -o</code> anywhere on this page to view it.
+  </footer>
+</body>
+</html>

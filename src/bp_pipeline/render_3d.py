@@ -20,7 +20,7 @@ from collections.abc import Sequence
 import dataclasses
 import math
 import pathlib
-from typing import Any
+from typing import Any, Literal
 
 from matplotlib import axes
 from matplotlib import collections as mpl_collections
@@ -29,7 +29,9 @@ import matplotlib.pyplot as plt
 
 from . import bus
 from . import folder_3d as fold_3d
+from .crease_pattern import crease as crease_lib
 from .crease_pattern import crease_pattern as cp_lib
+from .crease_pattern import point as point_lib
 
 _DEFAULT_PAPER_RGB = (0.85, 0.745, 0.596)
 
@@ -42,8 +44,44 @@ _TURNAROUND_VIEWS: tuple[tuple[str, float, float, float], ...] = (
 
 
 @dataclasses.dataclass(frozen=True)
+class MeshRegion:
+  """A packed flap or river that mesh faces can belong to.
+
+  Attributes:
+    kind: `'flap'` for a leaf limb, `'river'` for an internal one.
+    sticks: Names of the source stick-figure sticks the region realizes, in
+      chain order when packing merged several sticks into one limb.
+  """
+
+  kind: Literal['flap', 'river']
+  sticks: tuple[str, ...]
+
+
+@dataclasses.dataclass(frozen=True)
 class FoldedMesh3D:
-  """Planar crease-pattern topology and its 3D BFS hinge-folded geometry."""
+  """Planar crease-pattern topology and its 3D BFS hinge-folded geometry.
+
+  The fields from `grid_size` on describe where the mesh came from in the
+  pipeline. They keep their empty defaults when the mesh is built from an
+  object that does not carry that context.
+
+  Attributes:
+    vertices_2d: Flat vertices in `CreasePattern` coordinates minus 0.5, so the
+      sheet is centered on the origin and y points down.
+    vertices_3d: The same vertices in the folded model.
+    faces: Vertex indices around each planar face.
+    edges: Vertex index pairs, parallel to the `edges_*` fields.
+    edges_assignment: FOLD assignment (`'M'`, `'V'`, `'F'` or `'B'`) per edge.
+    edges_fold_angle: Signed fold angle in degrees per edge, valley positive.
+    edge_key_angle: Fold angle keyed by sorted vertex index pair.
+    grid_size: Box-pleating grid size of the packed layout, if known.
+    regions: Flaps and rivers of the packed layout.
+    faces_region: Per face, the index into `regions` of the flap or river that
+      contains it, or None. Empty when `regions` is empty.
+    edges_shaping: Per edge, whether shaping added the crease instead of
+      inheriting it from the solved base. Empty unless the mesh is built from a
+      `ShapedCreasePattern` (or `PipelineResult` with `.shaped`).
+  """
 
   vertices_2d: list[tuple[float, float]]
   vertices_3d: list[tuple[float, float, float]]
@@ -52,9 +90,13 @@ class FoldedMesh3D:
   edges_assignment: list[str]
   edges_fold_angle: list[float]
   edge_key_angle: dict[tuple[int, int], float]
+  grid_size: int | None = None
+  regions: tuple[MeshRegion, ...] = ()
+  faces_region: tuple[int | None, ...] = ()
+  edges_shaping: tuple[bool, ...] = ()
 
   def to_fold_dict(self, title: str = 'model') -> dict[str, Any]:
-    """Serializes this 3D folded mesh to a FOLD v1.1 `foldedForm` dictionary."""
+    """Serializes this mesh to a FOLD dictionary; see `mesh_to_fold_dict`."""
     return mesh_to_fold_dict(self, title)
 
 
@@ -312,9 +354,9 @@ def _align_points_to_camera_frame(
     )
     flap_samples.append((sf_coords[leaf_joint], raw_pts_3d[nearest_v]))
     if leaf_joint in start_joints:
-      start_xy.append((tx, -ty))
+      start_xy.append((tx, ty))
     elif leaf_joint in end_joints:
-      end_xy.append((tx, -ty))
+      end_xy.append((tx, ty))
 
   if not flap_samples or not start_xy or not end_xy:
     return list(raw_pts_3d)
@@ -414,6 +456,8 @@ def _unwrap_mesh_target(
 ) -> tuple[cp_lib.CreasePattern, bus.PackedCreasePattern | None]:
   """Extracts `(CreasePattern, PackedCreasePattern | None)` from `target`."""
   if isinstance(target, bus.PipelineResult):
+    if isinstance(target.shaped, bus.ShapedCreasePattern):
+      return target.shaped.creases, (packed or target.packed)
     return target.solved.creases, (packed or target.packed)
   if isinstance(target, (bus.ShapedCreasePattern, bus.SolvedCreasePattern)):
     return target.creases, (packed or target.packed)
@@ -423,6 +467,79 @@ def _unwrap_mesh_target(
       'Expected CreasePattern, SolvedCreasePattern, ShapedCreasePattern, or'
       f' PipelineResult; got {type(target)!r}'
   )
+
+
+def _face_regions(
+    vertices_2d: Sequence[tuple[float, float]],
+    faces: Sequence[Sequence[int]],
+    packed: bus.PackedCreasePattern,
+) -> tuple[tuple[MeshRegion, ...], tuple[int | None, ...]]:
+  """Finds the packed flap or river that contains each face centroid."""
+  merged_from = packed.design.merged_from if packed.design is not None else {}
+  limbs: list[
+      tuple[Literal['flap', 'river'], str, tuple[bus.GridRect, ...]]
+  ] = [('flap', f.stick, (f.rect,)) for f in packed.flaps.values()]
+  limbs += [('river', r.stick, r.rects) for r in packed.rivers.values()]
+
+  regions: list[MeshRegion] = []
+  rects: list[tuple[bus.GridRect, int]] = []
+  for kind, stick, limb_rects in limbs:
+    region = MeshRegion(kind, tuple(merged_from.get(stick, (stick,))))
+    # A limb split into mirrored copies is still a single region.
+    if region not in regions:
+      regions.append(region)
+    rects.extend((rect, regions.index(region)) for rect in limb_rects)
+  if not regions:
+    return (), ()
+
+  grid_size = packed.grid_size
+  faces_region: list[int | None] = []
+  for face in faces:
+    x = (sum(vertices_2d[v][0] for v in face) / len(face) + 0.5) * grid_size
+    y = (sum(vertices_2d[v][1] for v in face) / len(face) + 0.5) * grid_size
+    faces_region.append(
+        next(
+            (
+                index
+                for rect, index in rects
+                if rect.x <= x <= rect.x + rect.width
+                and rect.y <= y <= rect.y + rect.height
+            ),
+            None,
+        )
+    )
+  return tuple(regions), tuple(faces_region)
+
+
+def _edges_added_by_shaping(
+    vertices_2d: Sequence[tuple[float, float]],
+    edges: Sequence[tuple[int, int]],
+    edges_assignment: Sequence[str],
+    base: cp_lib.CreasePattern,
+) -> tuple[bool, ...]:
+  """Flags the folded edges that lie on no folded crease of `base`."""
+  base_folds = crease_lib.CreaseBBoxIndex()
+  for crease_line in base.creases:
+    assignment, _ = fold_3d.crease_assignment_and_angle(
+        crease_line.fold, crease_line.fold_percent
+    )
+    if assignment in ('M', 'V'):
+      base_folds.add(crease_line)
+
+  def paper_point(vertex: int) -> point_lib.Point:
+    x, y = vertices_2d[vertex]
+    return point_lib.Point(x=x + 0.5, y=y + 0.5)
+
+  added: list[bool] = []
+  for (v1, v2), assignment in zip(edges, edges_assignment, strict=True):
+    p1, p2 = paper_point(v1), paper_point(v2)
+    if assignment not in ('M', 'V') or p1.isclose(p2):
+      added.append(False)
+      continue
+    # Only the geometry of the query crease matters, not its fold type.
+    edge_line = crease_lib.Crease(p1, p2, fold=crease_lib.Fold.MOUNTAIN)
+    added.append(not base_folds.any_overlapping(edge_line))
+  return tuple(added)
 
 
 def build_folded_mesh_3d(
@@ -450,6 +567,13 @@ def build_folded_mesh_3d(
     ValueError: If no bounded planar faces can be extracted from `cp`.
   """
   cp_obj, resolved_packed = _unwrap_mesh_target(cp, packed)
+  base_solved_cp: cp_lib.CreasePattern | None = None
+  if isinstance(cp, bus.ShapedCreasePattern):
+    base_solved_cp = cp.solved.creases
+  elif isinstance(cp, bus.PipelineResult) and isinstance(
+      cp.shaped, bus.ShapedCreasePattern
+  ):
+    base_solved_cp = cp.shaped.solved.creases
 
   def _pick_anchor(graph: fold_3d.FoldGraph) -> int:
     centered_2d = [
@@ -476,7 +600,7 @@ def build_folded_mesh_3d(
       for (u, v), angle in zip(edges, edges_fold_angle, strict=True)
   }
   raw_pts_3d = [
-      (float(x - 0.5), -float(y - 0.5), float(z))
+      (float(x - 0.5), float(y - 0.5), float(z))
       for x, y, z in model.vertices_3d
   ]
   aligned_pts_3d = _align_points_to_camera_frame(
@@ -491,6 +615,18 @@ def build_folded_mesh_3d(
   cz = sum(p[2] for p in aligned_pts_3d) / num_v
   vertices_3d = [(p[0] - cx, p[1] - cy, p[2] - cz) for p in aligned_pts_3d]
 
+  grid_size: int | None = None
+  regions: tuple[MeshRegion, ...] = ()
+  faces_region: tuple[int | None, ...] = ()
+  if resolved_packed is not None and resolved_packed.grid_size > 0:
+    grid_size = resolved_packed.grid_size
+    regions, faces_region = _face_regions(vertices_2d, faces, resolved_packed)
+  edges_shaping: tuple[bool, ...] = ()
+  if base_solved_cp is not None:
+    edges_shaping = _edges_added_by_shaping(
+        vertices_2d, edges, edges_assignment, base_solved_cp
+    )
+
   return FoldedMesh3D(
       vertices_2d=vertices_2d,
       vertices_3d=vertices_3d,
@@ -499,12 +635,62 @@ def build_folded_mesh_3d(
       edges_assignment=edges_assignment,
       edges_fold_angle=edges_fold_angle,
       edge_key_angle=edge_key_angle,
+      grid_size=grid_size,
+      regions=regions,
+      faces_region=faces_region,
+      edges_shaping=edges_shaping,
   )
 
 
 def mesh_to_fold_dict(mesh: FoldedMesh3D, title: str) -> dict[str, Any]:
-  """Serializes a `FoldedMesh3D` to a FOLD v1.1 `foldedForm` 3D JSON dict."""
-  return {
+  """Serializes a `FoldedMesh3D` to a FOLD dict with both of its states.
+
+  This docstring is the canonical schema specification for the extended
+  `shaped_3d.fold` format written by `bp-pipeline -o` and read by `docs/`.
+
+  Key frame and flat frame:
+    - Key frame (`frame_classes: ['foldedForm']`, `frame_attributes: ['3D']`):
+      3D folded vertices, faces, edges, assignments, and fold angles (FOLD 1.1).
+    - `file_frames[0]` (`frame_classes: ['creasePattern']`,
+      `frame_attributes: ['2D']`, `frame_inherit: True`, `frame_parent: 0`):
+      flat 2D `vertices_coords` on the same vertices, edges, and faces, so a
+      reader can unfold the model or re-fold it from `edges_foldAngle`.
+
+  Coordinate and handedness conventions:
+    FOLD frames are right-handed (`det = +1`) and list faces counter-clockwise.
+    `build_folded_mesh_3d` delegates directly to `folder_3d.fold_3d` (`det = +1`
+    proper `SO(3)` rotation of `folder_3d`'s 3D vertices, without reflecting
+    `y`). Reversing `folder_3d`'s clockwise face loops makes `faces_vertices`
+    counter-clockwise with normals pointing toward `+z`, and storing the flat
+    frame as `(1 - x_u, 1 - y_u)` (`[round(0.5 - x, 6), round(0.5 - y, 6)]`, a
+    proper 180-degree `SO(2)` rotation of `[0, 1]^2`) keeps faces
+    counter-clockwise on `[0, 1]^2`, puts `y_u = 0` at the top when drawn with
+    `+y` up, and makes positive fold angles (valleys) fold by the exact stored
+    angle into the 3D key frame—matching the bundled `docs/models/` snapshots.
+
+  Custom `bp:` extension keys (omitted when the corresponding `FoldedMesh3D`
+  field is empty or `None`, e.g. when built from a bare `CreasePattern`):
+    - `file_bp:gridSize` (`int`): box-pleating grid size from the packed layout.
+      Present when `mesh.grid_size is not None`.
+    - `file_bp:regions` (`list[dict[str, Any]]`): packed flaps and rivers, each
+      `{'kind': 'flap' | 'river', 'sticks': list[str]}` in chain order. Present
+      when `mesh.regions` is non-empty.
+    - `faces_bp:region` (`list[int | None]`): parallel to `faces_vertices`;
+      index into `file_bp:regions` for the region containing each face centroid,
+      or `None`. Present whenever `file_bp:regions` is present.
+    - `edges_bp:shaping` (`list[bool]`): parallel to `edges_vertices`; `True`
+      for mountain/valley edges added by shaping (not overlapping any folded
+      crease of `solved.creases`). Present when built from a
+      `ShapedCreasePattern` (`mesh.edges_shaping` non-empty).
+
+  Args:
+    mesh: The folded mesh to serialize.
+    title: Model name used in `file_title`.
+
+  Returns:
+    A JSON-serializable FOLD v1.1 dictionary.
+  """
+  fold: dict[str, Any] = {
       'file_spec': 1.1,
       'file_creator': 'bp_pipeline + render_3d',
       'file_title': f'{title} (3D Shaped Figure)',
@@ -515,11 +701,32 @@ def mesh_to_fold_dict(mesh: FoldedMesh3D, title: str) -> dict[str, Any]:
           [round(p[0], 6), round(p[1], 6), round(p[2], 6)]
           for p in mesh.vertices_3d
       ],
-      'faces_vertices': mesh.faces,
+      'faces_vertices': [list(reversed(face)) for face in mesh.faces],
       'edges_vertices': [list(e) for e in mesh.edges],
       'edges_assignment': mesh.edges_assignment,
       'edges_foldAngle': [round(a, 4) for a in mesh.edges_fold_angle],
+      'file_frames': [{
+          'frame_classes': ['creasePattern'],
+          'frame_attributes': ['2D'],
+          'frame_inherit': True,
+          'frame_parent': 0,
+          'vertices_coords': [
+              [round(0.5 - x, 6), round(0.5 - y, 6)]
+              for x, y in mesh.vertices_2d
+          ],
+      }],
   }
+  if mesh.grid_size is not None:
+    fold['file_bp:gridSize'] = mesh.grid_size
+  if mesh.regions:
+    fold['file_bp:regions'] = [
+        {'kind': region.kind, 'sticks': list(region.sticks)}
+        for region in mesh.regions
+    ]
+    fold['faces_bp:region'] = list(mesh.faces_region)
+  if mesh.edges_shaping:
+    fold['edges_bp:shaping'] = list(mesh.edges_shaping)
+  return fold
 
 
 def _normalize_paper_rgb(

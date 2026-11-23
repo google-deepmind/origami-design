@@ -1,0 +1,176 @@
+[
+  {
+    "slug": "golden-eagle",
+    "title": "Golden Eagle",
+    "subtitle": "Aquila chrysaetos",
+    "summary": "Stooping golden eagle sculpted on an economical 28×28 box-pleated grid with expansive fanned primary feathers, a bilaterally squash-folded tail fan, hooked beak, and razor-thin talons.",
+    "techniques": [
+      "Fanned Wings",
+      "Squash-Fold Tail",
+      "Clip-Narrowed Talons",
+      "3D Hooked Claws"
+    ],
+    "colorTop": "#9E3329",
+    "colorBottom": "#F3E7CE",
+    "camera": {
+      "azimuth": -42,
+      "elevation": 16
+    }
+  },
+  {
+    "slug": "winged-pegasus",
+    "title": "Winged Pegasus",
+    "subtitle": "Mythological Winged Stallion",
+    "summary": "Rearing winged stallion combining broad fanned pinions, a sculpted 3D equine cheek wedge, pricked ears, and straight clip-narrowed limb and neck segments.",
+    "techniques": [
+      "Fanned Great Wings",
+      "Squash-Fold Skull",
+      "Clip-Narrowed Limbs & Neck"
+    ],
+    "colorTop": "#244B7A",
+    "colorBottom": "#F5EFE2",
+    "camera": {
+      "azimuth": 38,
+      "elevation": 18
+    }
+  },
+  {
+    "slug": "triceratops",
+    "title": "Triceratops",
+    "subtitle": "Triceratops horridus",
+    "summary": "Three-horned ceratopsian dinosaur featuring a broad corner-packed cranial frill shield, twin brow horns, nasal horn, 3D squashed beak rostrum, and four articulated legs.",
+    "techniques": [
+      "Corner-Fanned Frill",
+      "Squash-Fold 3D Rostrum",
+      "Clip-Narrowed Feet",
+      "3D Folded Spine"
+    ],
+    "colorTop": "#3B6B54",
+    "colorBottom": "#F1E8D4",
+    "camera": {
+      "azimuth": 36,
+      "elevation": 20
+    }
+  },
+  {
+    "slug": "wyrmlord-dragon",
+    "title": "Western Dragon",
+    "subtitle": "Draco occidentalis",
+    "summary": "Articulated 26-stick dragon with twin swept horns, open roaring jaws, straight-narrowed neck river, fanned bat-like wings, four clawed legs, and a sinuous whip tail.",
+    "techniques": [
+      "Fanned Corner Wings",
+      "Clip-Narrowed Neck River",
+      "Symmetric Swept Horns",
+      "Roaring Jaws & S-Tail"
+    ],
+    "colorTop": "#8F2432",
+    "colorBottom": "#F0DFC2",
+    "camera": {
+      "azimuth": 35,
+      "elevation": 20
+    }
+  },
+  {
+    "slug": "king-cobra",
+    "title": "King Cobra",
+    "subtitle": "Ophiophagus hannah",
+    "summary": "Strike-posture cobra rising from a 6-segment coiled base into a squash-flared vertical neck, wide spectacled hood, open lower jaw, and narrowed forked tongue.",
+    "techniques": [
+      "Spiral Body Coil",
+      "Squash-Fold Neck",
+      "Flared Hood",
+      "Bifurcated Forked Tongue"
+    ],
+    "colorTop": "#B65D28",
+    "colorBottom": "#F5EBCE",
+    "camera": {
+      "azimuth": 40,
+      "elevation": 22
+    }
+  },
+  {
+    "slug": "emperor-scorpion",
+    "title": "Emperor Scorpion",
+    "subtitle": "Pandinus imperator",
+    "summary": "High-complexity 38-stick arachnid packing eight multi-jointed walking legs, twin open chela pincers, and a five-segment metasoma tail arching forward to a terminal stinger.",
+    "techniques": [
+      "8 Articulated Walking Legs",
+      "Segmented Overhead Tail Arch",
+      "Bifurcated Pedipalp Pincers"
+    ],
+    "colorTop": "#2E3440",
+    "colorBottom": "#EAE1CE",
+    "camera": {
+      "azimuth": 38,
+      "elevation": 26
+    }
+  },
+  {
+    "slug": "boxer-crab",
+    "title": "Boxer Crab",
+    "subtitle": "Lybia tessellata",
+    "summary": "Defensive marine crab thrusting two anemone-tipped chelipeds forward from a wide carapace flanked by eight bent walking legs.",
+    "techniques": [
+      "Dual Sea-Anemone Claws",
+      "8 Lateral Walking Legs",
+      "3D Sculpted Carapace"
+    ],
+    "colorTop": "#C94A38",
+    "colorBottom": "#F7EFE0",
+    "camera": {
+      "azimuth": -38,
+      "elevation": 32
+    }
+  },
+  {
+    "slug": "bull-moose",
+    "title": "Bull Moose",
+    "subtitle": "Alces alces",
+    "summary": "Forest ungulate crowned with multi-tined palmate antlers, sloped shoulders, angled snout, and four slender legs packed on a compact 34×34 grid.",
+    "techniques": [
+      "6-Point Branched Antlers",
+      "Oblique-Folded Head Wedge",
+      "Quadruped Stance"
+    ],
+    "colorTop": "#6E4730",
+    "colorBottom": "#F2E7D3",
+    "camera": {
+      "azimuth": 38,
+      "elevation": 18
+    }
+  },
+  {
+    "slug": "indian-peacock",
+    "title": "Indian Peacock",
+    "subtitle": "Pavo cristatus",
+    "summary": "Displaying peacock raising an eleven-ray semicircular tail train behind an upright neck, crested head, and balanced two-legged stance.",
+    "techniques": [
+      "11-Feather Radial Train Fan",
+      "Upright S-Curved Neck",
+      "Bipedal Stance"
+    ],
+    "colorTop": "#1D6A78",
+    "colorBottom": "#F4E9CC",
+    "camera": {
+      "azimuth": 36,
+      "elevation": 20
+    }
+  },
+  {
+    "slug": "crested-hoopoe",
+    "title": "Crested Hoopoe",
+    "subtitle": "Upupa epops",
+    "summary": "Walking hoopoe featuring an iconic eight-feather radial crown crest, long decurved bill, swept wings, and mid-stride legs.",
+    "techniques": [
+      "8-Feather Crown Crest Fan",
+      "Decurved Foraging Bill",
+      "Striding Bipedal Pose"
+    ],
+    "colorTop": "#C96A32",
+    "colorBottom": "#F5ECDC",
+    "camera": {
+      "azimuth": 36,
+      "elevation": 18
+    }
+  }
+]

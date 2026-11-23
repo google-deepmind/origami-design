@@ -1,0 +1,435 @@
+{
+  "name": "Scorpion dipping its front half downward slightly",
+  "category": "diverse scorpions",
+  "color_top": [
+    25,
+    15,
+    15
+  ],
+  "color_bottom": [
+    20,
+    10,
+    10
+  ],
+  "complexity": 3,
+  "root": "body_m2",
+  "children": [
+    {
+      "name": "body_rear",
+      "start": "body_mid",
+      "end": "m1",
+      "azimuth_angle": 180,
+      "elevation_angle": 10,
+      "length": 1,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "body_hips",
+      "start": "m1",
+      "end": "hips",
+      "azimuth_angle": 180,
+      "elevation_angle": 15,
+      "length": 1,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "body_m2",
+      "start": "body_mid",
+      "end": "m2",
+      "azimuth_angle": 0,
+      "elevation_angle": -10,
+      "length": 1,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "body_front",
+      "start": "m2",
+      "end": "shoulders",
+      "azimuth_angle": 0,
+      "elevation_angle": -20,
+      "length": 1,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_1",
+      "start": "hips",
+      "end": "t1",
+      "azimuth_angle": 180,
+      "elevation_angle": 30,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_2",
+      "start": "t1",
+      "end": "t2",
+      "azimuth_angle": 180,
+      "elevation_angle": 60,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_3",
+      "start": "t2",
+      "end": "t3",
+      "azimuth_angle": 180,
+      "elevation_angle": 85,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_4",
+      "start": "t3",
+      "end": "t4",
+      "azimuth_angle": 0,
+      "elevation_angle": 50,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "tail_5",
+      "start": "t4",
+      "end": "t5",
+      "azimuth_angle": 0,
+      "elevation_angle": 20,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "stinger",
+      "start": "t5",
+      "end": "stinger_tip",
+      "azimuth_angle": 0,
+      "elevation_angle": -20,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L1_p",
+      "start": "shoulders",
+      "end": "kL1",
+      "azimuth_angle": 60,
+      "elevation_angle": 10,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L1_d",
+      "start": "kL1",
+      "end": "fL1",
+      "azimuth_angle": 60,
+      "elevation_angle": -70,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R1_p",
+      "start": "shoulders",
+      "end": "kR1",
+      "azimuth_angle": -60,
+      "elevation_angle": 10,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R1_d",
+      "start": "kR1",
+      "end": "fR1",
+      "azimuth_angle": -60,
+      "elevation_angle": -70,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L2_p",
+      "start": "m2",
+      "end": "kL2",
+      "azimuth_angle": 75,
+      "elevation_angle": 20,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L2_d",
+      "start": "kL2",
+      "end": "fL2",
+      "azimuth_angle": 75,
+      "elevation_angle": -60,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R2_p",
+      "start": "m2",
+      "end": "kR2",
+      "azimuth_angle": -75,
+      "elevation_angle": 20,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R2_d",
+      "start": "kR2",
+      "end": "fR2",
+      "azimuth_angle": -75,
+      "elevation_angle": -60,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L3_p",
+      "start": "body_mid",
+      "end": "kL3",
+      "azimuth_angle": 105,
+      "elevation_angle": 30,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L3_d",
+      "start": "kL3",
+      "end": "fL3",
+      "azimuth_angle": 105,
+      "elevation_angle": -50,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R3_p",
+      "start": "body_mid",
+      "end": "kR3",
+      "azimuth_angle": -105,
+      "elevation_angle": 30,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R3_d",
+      "start": "kR3",
+      "end": "fR3",
+      "azimuth_angle": -105,
+      "elevation_angle": -50,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L4_p",
+      "start": "m1",
+      "end": "kL4",
+      "azimuth_angle": 135,
+      "elevation_angle": 30,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L4_d",
+      "start": "kL4",
+      "end": "fL4",
+      "azimuth_angle": 135,
+      "elevation_angle": -40,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R4_p",
+      "start": "m1",
+      "end": "kR4",
+      "azimuth_angle": -135,
+      "elevation_angle": 30,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R4_d",
+      "start": "kR4",
+      "end": "fR4",
+      "azimuth_angle": -135,
+      "elevation_angle": -40,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "arm_L1",
+      "start": "shoulders",
+      "end": "eL",
+      "azimuth_angle": 30,
+      "elevation_angle": -30,
+      "length": 3,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "arm_L2",
+      "start": "eL",
+      "end": "wL",
+      "azimuth_angle": 10,
+      "elevation_angle": -10,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_L_fixed",
+      "start": "wL",
+      "end": "pLf",
+      "azimuth_angle": 10,
+      "elevation_angle": 0.0,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_L_moveable",
+      "start": "wL",
+      "end": "pLm",
+      "azimuth_angle": 40,
+      "elevation_angle": 0.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_L_fixed_tip",
+      "start": "pLf",
+      "end": "pLft",
+      "azimuth_angle": 10,
+      "elevation_angle": 0.0,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_L_moveable_tip",
+      "start": "pLm",
+      "end": "pLmt",
+      "azimuth_angle": 20,
+      "elevation_angle": 0.0,
+      "length": 1,
+      "width": 0.25,
+      "shaping_flap": false
+    },
+    {
+      "name": "arm_R1",
+      "start": "shoulders",
+      "end": "eR",
+      "azimuth_angle": -30,
+      "elevation_angle": -30,
+      "length": 3,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "arm_R2",
+      "start": "eR",
+      "end": "wR",
+      "azimuth_angle": -10,
+      "elevation_angle": -10,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_R_fixed",
+      "start": "wR",
+      "end": "pRf",
+      "azimuth_angle": -10,
+      "elevation_angle": 0.0,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_R_moveable",
+      "start": "wR",
+      "end": "pRm",
+      "azimuth_angle": -40,
+      "elevation_angle": 0.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_R_fixed_tip",
+      "start": "pRf",
+      "end": "pRft",
+      "azimuth_angle": -10,
+      "elevation_angle": 0.0,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "pincer_R_moveable_tip",
+      "start": "pRm",
+      "end": "pRmt",
+      "azimuth_angle": -20,
+      "elevation_angle": 0.0,
+      "length": 1,
+      "width": 0.25,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      20,
+      20,
+      15
+    ],
+    [
+      -20,
+      20,
+      15
+    ],
+    [
+      20,
+      -20,
+      15
+    ],
+    [
+      -20,
+      -20,
+      15
+    ],
+    [
+      0,
+      25,
+      10
+    ],
+    [
+      0,
+      -25,
+      10
+    ],
+    [
+      25,
+      0,
+      10
+    ]
+  ]
+}

@@ -1,0 +1,375 @@
+{
+  "name": "Boxer crab punching its claws forward in defense",
+  "category": "crabs",
+  "color_top": [
+    255,
+    87,
+    34
+  ],
+  "color_bottom": [
+    255,
+    255,
+    255
+  ],
+  "complexity": 4,
+  "root": "body_mid_segment",
+  "children": [
+    {
+      "name": "body_mid_segment",
+      "start": "center",
+      "end": "front",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 0.0,
+      "length": 2,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "body_rear_segment",
+      "start": "center",
+      "end": "rear",
+      "azimuth_angle": 180.0,
+      "elevation_angle": 0.0,
+      "length": 2,
+      "width": 4,
+      "shaping_flap": false
+    },
+    {
+      "name": "arm_L",
+      "start": "front",
+      "end": "elbow_L",
+      "azimuth_angle": 25.0,
+      "elevation_angle": 20.0,
+      "length": 3,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "forearm_L",
+      "start": "elbow_L",
+      "end": "wrist_L",
+      "azimuth_angle": 10.0,
+      "elevation_angle": 10.0,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_L_base",
+      "start": "wrist_L",
+      "end": "aL_core",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 0.0,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_L_tent_1",
+      "start": "aL_core",
+      "end": "tL1",
+      "azimuth_angle": 45.0,
+      "elevation_angle": 45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_L_tent_2",
+      "start": "aL_core",
+      "end": "tL2",
+      "azimuth_angle": -45.0,
+      "elevation_angle": 45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_L_tent_3",
+      "start": "aL_core",
+      "end": "tL3",
+      "azimuth_angle": 45.0,
+      "elevation_angle": -45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_L_tent_4",
+      "start": "aL_core",
+      "end": "tL4",
+      "azimuth_angle": -45.0,
+      "elevation_angle": -45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "arm_R",
+      "start": "front",
+      "end": "elbow_R",
+      "azimuth_angle": -25.0,
+      "elevation_angle": 20.0,
+      "length": 3,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "forearm_R",
+      "start": "elbow_R",
+      "end": "wrist_R",
+      "azimuth_angle": -10.0,
+      "elevation_angle": 10.0,
+      "length": 2,
+      "width": 1.0,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_R_base",
+      "start": "wrist_R",
+      "end": "aR_core",
+      "azimuth_angle": 0.0,
+      "elevation_angle": 0.0,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_R_tent_1",
+      "start": "aR_core",
+      "end": "tR1",
+      "azimuth_angle": 45.0,
+      "elevation_angle": 45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_R_tent_2",
+      "start": "aR_core",
+      "end": "tR2",
+      "azimuth_angle": -45.0,
+      "elevation_angle": 45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_R_tent_3",
+      "start": "aR_core",
+      "end": "tR3",
+      "azimuth_angle": 45.0,
+      "elevation_angle": -45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "anemone_R_tent_4",
+      "start": "aR_core",
+      "end": "tR4",
+      "azimuth_angle": -45.0,
+      "elevation_angle": -45.0,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L1_proximal",
+      "start": "front",
+      "end": "kL1",
+      "azimuth_angle": 70.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L1_distal",
+      "start": "kL1",
+      "end": "fL1",
+      "azimuth_angle": 70.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R1_proximal",
+      "start": "front",
+      "end": "kR1",
+      "azimuth_angle": -70.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R1_distal",
+      "start": "kR1",
+      "end": "fR1",
+      "azimuth_angle": -70.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L2_proximal",
+      "start": "center",
+      "end": "kL2",
+      "azimuth_angle": 110.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L2_distal",
+      "start": "kL2",
+      "end": "fL2",
+      "azimuth_angle": 110.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R2_proximal",
+      "start": "center",
+      "end": "kR2",
+      "azimuth_angle": -110.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R2_distal",
+      "start": "kR2",
+      "end": "fR2",
+      "azimuth_angle": -110.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L3_proximal",
+      "start": "center",
+      "end": "kL3",
+      "azimuth_angle": 150.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L3_distal",
+      "start": "kL3",
+      "end": "fL3",
+      "azimuth_angle": 150.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R3_proximal",
+      "start": "center",
+      "end": "kR3",
+      "azimuth_angle": -150.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R3_distal",
+      "start": "kR3",
+      "end": "fR3",
+      "azimuth_angle": -150.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L4_proximal",
+      "start": "rear",
+      "end": "kL4",
+      "azimuth_angle": 200.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_L4_distal",
+      "start": "kL4",
+      "end": "fL4",
+      "azimuth_angle": 200.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R4_proximal",
+      "start": "rear",
+      "end": "kR4",
+      "azimuth_angle": -200.0,
+      "elevation_angle": 30.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "leg_R4_distal",
+      "start": "kR4",
+      "end": "fR4",
+      "azimuth_angle": -200.0,
+      "elevation_angle": -60.0,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      10,
+      10,
+      10
+    ],
+    [
+      10,
+      -10,
+      5
+    ],
+    [
+      0,
+      15,
+      2
+    ],
+    [
+      -15,
+      0,
+      10
+    ],
+    [
+      0,
+      0,
+      20
+    ],
+    [
+      12,
+      -12,
+      8
+    ],
+    [
+      -12,
+      12,
+      8
+    ]
+  ]
+}

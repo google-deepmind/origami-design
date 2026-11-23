@@ -5,6 +5,51 @@ Global Flat-Foldability Verification.
 
 **Paper:** [**COrigami: An AI Pipeline for Co-Designing Flat-Foldable Visually Recognisable Origami**](https://arxiv.org/abs/2606.26299) (`arXiv:2606.26299`)
 
+**Studio:**
+[COrigami Studio](https://google-deepmind.github.io/origami-design/) folds and
+unfolds the showcase models below in the browser, next to their crease
+patterns, packings and stick figures. It also opens the `shaped_3d.fold` that
+`bp-pipeline -o` writes for a design of your own.
+
+## Showcase
+
+Precomputed showcase models; each opens in the studio.
+
+> **Reproducibility note:** The ten bundled showcase models under `docs/models/`
+> are precomputed snapshots produced in earlier interactive shaping sessions
+> whose tool-call histories were **not recorded**. They **cannot be
+> regenerated** by running `bp-pipeline` on their `stick_figure.json` files
+> alone. (One model, `wyrmlord-dragon`, also had a single missing corner face —
+> 1 vertex, 2 border edges, 0.41% of the sheet — patched to close a 0.001-unit
+> border gap in its source crease pattern.) Fresh designs written by
+> `bp-pipeline FIGURE -o out/` produce a compatible `shaped_3d.fold` that the
+> studio loads directly.
+
+<!-- disableFinding(LINE_OVER_80) -->
+
+| [![Golden Eagle](docs/models/golden-eagle/preview.png)<br>Golden Eagle](https://google-deepmind.github.io/origami-design/?model=golden-eagle) | [![Winged Pegasus](docs/models/winged-pegasus/preview.png)<br>Winged Pegasus](https://google-deepmind.github.io/origami-design/?model=winged-pegasus) | [![Triceratops](docs/models/triceratops/preview.png)<br>Triceratops](https://google-deepmind.github.io/origami-design/?model=triceratops) | [![Western Dragon](docs/models/wyrmlord-dragon/preview.png)<br>Western Dragon](https://google-deepmind.github.io/origami-design/?model=wyrmlord-dragon) | [![King Cobra](docs/models/king-cobra/preview.png)<br>King Cobra](https://google-deepmind.github.io/origami-design/?model=king-cobra) |
+| :---: | :---: | :---: | :---: | :---: |
+| [![Emperor Scorpion](docs/models/emperor-scorpion/preview.png)<br>Emperor Scorpion](https://google-deepmind.github.io/origami-design/?model=emperor-scorpion) | [![Boxer Crab](docs/models/boxer-crab/preview.png)<br>Boxer Crab](https://google-deepmind.github.io/origami-design/?model=boxer-crab) | [![Bull Moose](docs/models/bull-moose/preview.png)<br>Bull Moose](https://google-deepmind.github.io/origami-design/?model=bull-moose) | [![Indian Peacock](docs/models/indian-peacock/preview.png)<br>Indian Peacock](https://google-deepmind.github.io/origami-design/?model=indian-peacock) | [![Crested Hoopoe](docs/models/crested-hoopoe/preview.png)<br>Crested Hoopoe](https://google-deepmind.github.io/origami-design/?model=crested-hoopoe) |
+
+<!-- enableFinding(LINE_OVER_80) -->
+
+The studio is the static site under [`docs/`](docs/). A showcase model is a
+directory `docs/models/<slug>/` with three files:
+
+-   `shaped_3d.fold`, in the extended [FOLD](https://github.com/edemaine/fold)
+    v1.1 layout that `bp-pipeline -o` writes (`file_frames[0]` plus the `bp:`
+    keys; see the canonical schema in
+    [`src/bp_pipeline/render_3d.py`](src/bp_pipeline/render_3d.py)
+    `mesh_to_fold_dict`);
+-   `stick_figure.json`, the stick figure it was designed from;
+-   `preview.png`, a 4:3 picture for the gallery.
+
+To add one, also give it an entry in
+[`docs/models/catalog.json`](docs/models/catalog.json) with what the files do
+not say: `slug`, `title`, `subtitle`, `summary`, `techniques`, the paper
+colors `colorTop` and `colorBottom`, and the `camera` angles of the opening
+view. Run `python3 -m http.server -d docs` to try the site locally.
+
 ## Overview
 
 `bp_pipeline` (`bp`) is a standalone Python library and CLI accompanying the
