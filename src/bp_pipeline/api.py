@@ -484,8 +484,9 @@ def pack(
   Args:
     design: DesignTree to pack (call bp.prepare(...) first).
     config: Optional packing task configuration or PackingConfig preset.
-    packer: Optional packing engine name ('default', or a custom packer
-      registered via register_packer). Overrides `config.packer` when provided.
+    packer: Optional packing engine name ('default', 'builtin', or a custom
+      packer registered via register_packer). Overrides `config.packer` when
+      provided.
     packer_options: Optional engine-agnostic `PackerOptions` controlling
       timeout, solution limits, target grid size, and worker count.
     packer_config: Optional opaque plugin-specific configuration passed through
@@ -516,13 +517,16 @@ def pack(
     )
   task_cfg = _resolve_packing_task_config(config)
   effective_packer = packer if packer is not None else task_cfg.packer
+  resolved_packer = plugins.resolve_packer(effective_packer)
   effective_packer_config = (
       packer_config if packer_config is not None else task_cfg.packer_config
   )
 
   task_cfg = dataclasses.replace(
       task_cfg,
-      packer=effective_packer,
+      packer=(
+          resolved_packer if resolved_packer != 'builtin' else effective_packer
+      ),
       packer_config=effective_packer_config,
   )
   raw_callback = None
@@ -539,11 +543,11 @@ def pack(
 
     raw_callback = _raw_callback
 
-  if effective_packer != 'default':
+  if resolved_packer != 'builtin':
     opts = _resolve_packer_options(
         packer_options, task_cfg=task_cfg, design=design
     )
-    packer_fn = plugins.get_packer(effective_packer)
+    packer_fn = plugins.get_packer(resolved_packer)
     if packer_fn is None:
       raise ValueError(
           f'Unknown or unregistered packer {effective_packer!r}. '
@@ -567,7 +571,7 @@ def pack(
     if output is None or not getattr(output, 'success', True):
       err_msg = (
           getattr(output, 'error_message', None)
-          or f'{effective_packer} packing failed'
+          or f'{resolved_packer} packing failed'
       )
       raise PackingFailedError(err_msg, errors=(err_msg,))
     return bus.PackedCreasePattern.from_packing_output(
@@ -645,7 +649,13 @@ def solve(
   if scale_factor <= 0:
     raise ValueError(f'scale_factor must be positive, got {scale_factor}')
   effective_config = config if config is not None else DEFAULT_SOLVER_CONFIG
-  if solver is not None:
+  requested_solver = solver if solver is not None else effective_config.solver
+  resolved_solver = plugins.resolve_solver(requested_solver)
+  if resolved_solver != 'builtin':
+    effective_config = dataclasses.replace(
+        effective_config, solver=resolved_solver
+    )
+  elif solver is not None:
     effective_config = dataclasses.replace(effective_config, solver=solver)
   scaled_grid_size = int(packed.grid_size * scale_factor)
   try:
@@ -868,29 +878,23 @@ def fold(
   spec = _PRESETS[preset]
   design = prepare(stick_figure_or_json)
   task_cfg = _resolve_packing_task_config(spec.packing_config)
-  if packer is not None:
-    task_cfg = dataclasses.replace(task_cfg, packer=packer)
-  try:
+  effective_packer = packer if packer is not None else task_cfg.packer
+  resolved_packer = plugins.resolve_packer(effective_packer)
+  packing_result: pipeline.PackingResult | None = None
+  if resolved_packer != 'builtin':
+    task_cfg = dataclasses.replace(task_cfg, packer=resolved_packer)
+    packed = pack(design, config=task_cfg, packer=resolved_packer)
+  else:
     if packer is not None:
-      packed = pack(design, config=task_cfg, packer=packer)
-      packing_result = pipeline.PackingResult(
-          name=design.source.name,
-          sequence_status='SUCCESS in CREASE_PATTERN_PACKING',
-          packed_cps_count=1,
-          packed_cps=[packed.creases],
-          packing_outputs=[packed.to_packing_output()],
-          duration_seconds=0.0,
-          stick_figure_input=design.source,
-          packing_config=task_cfg.packing_config,
-      )
-    else:
+      task_cfg = dataclasses.replace(task_cfg, packer=packer)
+    try:
       packing_result = pipeline.pack_crease_pattern(design, config=task_cfg)
       packed = bus.PackedCreasePattern.from_packing_output(
           packing_result.packing_outputs[0],
           design=design,
       )
-  except ValueError as err:
-    raise PackingFailedError(str(err), errors=(str(err),)) from err
+    except ValueError as err:
+      raise PackingFailedError(str(err), errors=(str(err),)) from err
 
   effective_sweep_configs = spec.sweep_configs
   if solver is not None:
@@ -936,7 +940,7 @@ def fold(
 
     candidates = _try_scale1_guided(packed)
     tried_packings = [packed]
-    if not candidates:
+    if not candidates and packing_result is not None:
       for cand_out in pipeline.iter_additional_packing_candidates(
           packing_result,
           start_time=start_time,
@@ -995,21 +999,22 @@ def fold(
     except SolvingFailedError as first_err:
       errors = list(first_err.errors or (str(first_err),))
       candidates = []
-      start_time = time.perf_counter()
-      for cand_out in pipeline.iter_additional_packing_candidates(
-          packing_result,
-          start_time=start_time,
-          solve_timeout_seconds=None,
-      ):
-        cand_packed = bus.PackedCreasePattern.from_packing_output(
-            cand_out, design=design
-        )
-        try:
-          candidates = solve_sweep(cand_packed, effective_sweep_configs)
-          packed = cand_packed
-          break
-        except SolvingFailedError as err:
-          errors.extend(err.errors or (str(err),))
+      if packing_result is not None:
+        start_time = time.perf_counter()
+        for cand_out in pipeline.iter_additional_packing_candidates(
+            packing_result,
+            start_time=start_time,
+            solve_timeout_seconds=None,
+        ):
+          cand_packed = bus.PackedCreasePattern.from_packing_output(
+              cand_out, design=design
+          )
+          try:
+            candidates = solve_sweep(cand_packed, effective_sweep_configs)
+            packed = cand_packed
+            break
+          except SolvingFailedError as err:
+            errors.extend(err.errors or (str(err),))
       if not candidates:
         raise SolvingFailedError(
             f'No flat-foldable crease pattern found for {design.source.name!r}'

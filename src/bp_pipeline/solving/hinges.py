@@ -2640,8 +2640,8 @@ class SolverConfig:
       vertex pruning, and multi-partition progress advancement.
     max_branching_factor: The maximum number of next states to generate per
       state.
-    solver: The hinge solver backend to use ('default', or any external solver
-      registered via plugins.register_solver).
+    solver: The hinge solver backend to use ('default', 'builtin', or any
+      external solver registered via plugins.register_solver).
     num_workers: Number of parallel search workers for registered solver plugins
       (defaults to 1 for fork-safety).
   """
@@ -3179,7 +3179,7 @@ class Solver:
     """Yields solved crease patterns as the search discovers them."""
     self.start_time = time.perf_counter()
 
-    if self.config.solver != 'default':
+    if self.config.solver not in ('default', 'builtin'):
       solver_fn = plugins.get_solver(self.config.solver)
       if solver_fn is None:
         raise ValueError(

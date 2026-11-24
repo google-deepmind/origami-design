@@ -876,7 +876,7 @@ def _attempt_packing(
   """Attempts to pack the stick figure with the given grid size."""
   timeout.maybe_timeout_cooperatively()
 
-  if packer != 'default':
+  if packer not in ('default', 'builtin'):
     from . import plugins  # pylint: disable=g-import-not-at-top
 
     grid_fn = plugins.get_grid_packer(packer)

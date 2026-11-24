@@ -175,6 +175,7 @@ class ApiTest(parameterized.TestCase):
                 max_steps=50,
                 max_time_limit=10.0,
                 remove_central_crease=True,
+                solver='builtin',
             ),
         )
     )
