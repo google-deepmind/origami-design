@@ -16,8 +16,12 @@
 """Tests for the showcase models and the studio page under `docs/`."""
 
 import json
+import os
 import pathlib
 import re
+import shutil
+import subprocess
+import tempfile
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -32,6 +36,27 @@ _CATALOG = json.loads(
 )
 
 _PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
+
+_MODELS_WITH_BASE_FOLD_ANGLE = frozenset({
+    'boxer-crab',
+    'bull-moose',
+    'crested-hoopoe',
+    'emperor-scorpion',
+    'golden-eagle',
+    'indian-peacock',
+    'king-cobra',
+    'triceratops',
+    'winged-pegasus',
+    'wyrmlord-dragon',
+})
+
+_MODELS_WITH_UNMODIFIED_BASE_TOPOLOGY = frozenset({
+    'boxer-crab',
+    'bull-moose',
+    'crested-hoopoe',
+    'emperor-scorpion',
+    'indian-peacock',
+})
 
 
 def _each_model():
@@ -53,6 +78,11 @@ class ShowcaseTest(parameterized.TestCase):
     self.assertContainsSubset({'style.css', 'js/main.js'}, urls)
     for url in urls:
       self.assertTrue((_DOCS_DIR / url).exists(), url)
+
+    self.assertTrue((_DOCS_DIR / 'js' / 'video.js').is_file())
+    self.assertIn('id="record-video"', page)
+    self.assertIn('id="video-preset"', page)
+    self.assertIn('<input id="creases" type="checkbox">', page)
 
     for script in (_DOCS_DIR / 'js').glob('*.js'):
       source = script.read_text(encoding='utf-8')
@@ -120,6 +150,165 @@ class ShowcaseTest(parameterized.TestCase):
     self.assertLen(faces_region, len(fold['faces_vertices']))
     self.assertContainsSubset(set(faces_region) - {None}, range(len(regions)))
     self.assertLen(fold['edges_bp:shaping'], len(fold['edges_vertices']))
+    if entry['slug'] in _MODELS_WITH_BASE_FOLD_ANGLE:
+      self.assertIn('edges_bp:baseFoldAngle', fold)
+    if 'edges_bp:baseFoldAngle' not in fold:
+      return
+    self.assertLen(fold['edges_bp:baseFoldAngle'], len(fold['edges_vertices']))
+
+    base_angles = np.asarray(fold['edges_bp:baseFoldAngle'], dtype=float)
+    shaping = np.asarray(fold['edges_bp:shaping'], dtype=bool)
+    assignments = np.asarray(fold['edges_assignment'])
+    mv = np.isin(assignments, ['M', 'V'])
+    self.assertTrue(np.isin(base_angles, [-180.0, 0.0, 180.0]).all())
+    np.testing.assert_array_equal(base_angles[shaping], 0.0)
+    np.testing.assert_array_equal(shaping[mv], base_angles[mv] == 0.0)
+    np.testing.assert_array_equal(base_angles[assignments == 'B'], 0.0)
+
+    # Every interior base vertex outside shaped squash/fan edits must satisfy
+    # Maekawa's theorem (|M - V| == 2) on `edges_bp:baseFoldAngle` (and across
+    # the entire sheet when shaping did not delete base segments).
+    flat, _ = fold_checks.frames(fold)
+    num_verts = len(flat)
+    border_verts = set()
+    touches_shaping = np.zeros(num_verts, dtype=bool)
+    m_counts = np.zeros(num_verts, dtype=int)
+    v_counts = np.zeros(num_verts, dtype=int)
+    for v_idx, (x, y) in enumerate(flat):
+      if (
+          x <= 1e-5
+          or x >= 1.0 - 1e-5
+          or y <= 1e-5
+          or y >= 1.0 - 1e-5
+      ):
+        border_verts.add(v_idx)
+    for e_idx, (u, v) in enumerate(fold['edges_vertices']):
+      if assignments[e_idx] == 'B':
+        border_verts.add(u)
+        border_verts.add(v)
+        continue
+      if shaping[e_idx]:
+        touches_shaping[u] = True
+        touches_shaping[v] = True
+      if base_angles[e_idx] == -180.0:
+        m_counts[u] += 1
+        m_counts[v] += 1
+      elif base_angles[e_idx] == 180.0:
+        v_counts[u] += 1
+        v_counts[v] += 1
+
+    base_degree = m_counts + v_counts
+    violations = [
+        v_idx
+        for v_idx in range(num_verts)
+        if v_idx not in border_verts
+        and base_degree[v_idx] > 0
+        and abs(int(m_counts[v_idx]) - int(v_counts[v_idx])) != 2
+    ]
+    unshaped_violations = [v for v in violations if not touches_shaping[v]]
+    self.assertEmpty(unshaped_violations)
+    if entry['slug'] in _MODELS_WITH_UNMODIFIED_BASE_TOPOLOGY:
+      self.assertEmpty(violations)
+
+  def test_video_timeline_and_live_schedule_under_node(self):
+    node = os.environ.get('NODE_BIN') or shutil.which('node')
+    if node and not os.path.isabs(node) and not os.path.exists(node):
+      node = os.path.join(
+          os.environ.get('TEST_SRCDIR', ''),
+          os.environ.get('TEST_WORKSPACE', ''),
+          node,
+      )
+    if os.environ.get('NODE_BIN'):
+      self.assertTrue(os.path.exists(node), node)
+    if not node or not (os.path.exists(node) or shutil.which(node)):
+      self.skipTest('node runtime not available')
+
+    eagle_fold = (_MODELS_DIR / 'golden-eagle' / 'shaped_3d.fold').resolve()
+    eagle_sf = (_MODELS_DIR / 'golden-eagle' / 'stick_figure.json').resolve()
+    with tempfile.TemporaryDirectory() as tmpdir:
+      tmp = pathlib.Path(tmpdir)
+      (tmp / 'package.json').write_text(
+          '{"type": "module"}\n', encoding='utf-8'
+      )
+      for js_file in (_DOCS_DIR / 'js').glob('*.js'):
+        shutil.copy2(js_file, tmp / js_file.name)
+      script_path = tmp / 'check.mjs'
+      script_path.write_text(
+          f"""
+      import fs from 'node:fs';
+      import assert from 'node:assert/strict';
+      import {{
+        DEFAULT_BASE_COMPLETE_T,
+        DEFAULT_SHAPING_START_T,
+        DEFAULT_STANDUP_START_T,
+        buildFoldingSchedule,
+      }} from './schedule.js';
+      import {{evaluateVideoTimeline}} from './video.js';
+      import {{Folder, parseFold}} from './fold.js';
+
+      for (const staged of [true, false]) {{
+        const cfg = {{
+          staged,
+          baseCompleteT: DEFAULT_BASE_COMPLETE_T,
+          shapingStartT: DEFAULT_SHAPING_START_T,
+          standupStartT: DEFAULT_STANDUP_START_T,
+          heroAzimuth: 36,
+          heroElevation: 20,
+          initialFold: 1,
+        }};
+        for (const preset of ['guided', 'hero', 'fold']) {{
+          const total = evaluateVideoTimeline(preset, 0, cfg).totalSec;
+          let prev = -1;
+          let sawBaseDwell = false;
+          for (let i = 0; i <= 2000; i++) {{
+            const t = (total * i) / 2000;
+            const step = evaluateVideoTimeline(preset, t, cfg);
+            assert(
+                step.fold >= prev - 1e-12,
+                `${{preset}} snapped backwards at t=${{t}}`);
+            if (Math.abs(step.fold - DEFAULT_BASE_COMPLETE_T) < 1e-9) {{
+              sawBaseDwell = true;
+            }}
+            prev = step.fold;
+          }}
+          if (staged) assert(sawBaseDwell, `${{preset}} missed base dwell`);
+        }}
+      }}
+
+      const eagle = parseFold(
+          JSON.parse(fs.readFileSync({json.dumps(str(eagle_fold))}, 'utf8')));
+      const sf = JSON.parse(
+          fs.readFileSync({json.dumps(str(eagle_sf))}, 'utf8'));
+      const sched = buildFoldingSchedule(eagle, sf);
+      const folder = new Folder(eagle);
+      folder.setSchedule(sched);
+      let peakStrain = 0;
+      let transitions = 0;
+      let lastKey = null;
+      for (let i = 0; i <= 480; i++) {{
+        folder.positionsAt(i / 480, true);
+        peakStrain = Math.max(peakStrain, folder.lastState.strainPct);
+        if (folder.lastState.diagramKey !== lastKey) {{
+          transitions++;
+          lastKey = folder.lastState.diagramKey;
+        }}
+      }}
+      assert(
+          peakStrain < 105,
+          `golden-eagle live peak strain=${{peakStrain}}`);
+      assert(
+          transitions <= 2 * sched.phases.length + 4,
+          `excessive diagramKey transitions=${{transitions}}`);
+      """,
+          encoding='utf-8',
+      )
+      res = subprocess.run(
+          [node, str(script_path)],
+          capture_output=True,
+          text=True,
+          check=False,
+      )
+      self.assertEqual(res.returncode, 0, msg=res.stderr or res.stdout)
 
 
 if __name__ == '__main__':

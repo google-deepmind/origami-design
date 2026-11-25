@@ -19,7 +19,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>COrigami Studio</title>
-  <meta name="description" content="Interactive 3D gallery of precomputed box-pleated origami showcase models and viewer for bp-pipeline shaped_3d.fold files.">
+  <meta name="description" content="Interactive 3D gallery of precomputed box-pleated origami showcase models with multi-stage folding schedules and viewer for bp-pipeline shaped_3d.fold files.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 22 8.5 12 15 2 8.5z' fill='%23b83a2d'/%3E%3Cpath d='M2 13l10 6.5L22 13 12 22z' fill='%231d4ed8'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
   <!-- three.js is the only external dependency; pin an exact version. -->
@@ -73,9 +73,22 @@
         </div>
 
         <div class="dock">
+          <div class="stage-bar">
+            <button id="stage-caption" class="stage-caption" type="button" title="Open Multi-Stage Folding Schedule">Final 3D Sculpted Origami</button>
+            <div class="milestones" role="group" aria-label="Folding milestones">
+              <button type="button" data-jump="0">Flat</button>
+              <button id="jump-base" type="button" data-jump="" title="Jump to the razor-flat box-pleated base">Base</button>
+              <button type="button" data-jump="1">Folded</button>
+              <button id="speed" type="button" title="Cycle playback speed">1&times;</button>
+              <button id="quick-video" type="button" title="Record a 1080p folding and 360° rotation video">Record video</button>
+            </div>
+          </div>
           <div class="fold-row">
             <button id="play" class="button primary" type="button">Unfold</button>
-            <input id="fold" type="range" min="0" max="100" step="0.5" value="100" aria-label="Folding progress">
+            <div class="scrubber">
+              <div id="phase-track" class="phase-track" aria-hidden="true"></div>
+              <input id="fold" type="range" min="0" max="100" step="0.25" value="100" aria-label="Folding progress">
+            </div>
             <output id="fold-value" for="fold">100%</output>
             <label class="chip" title="Continuously fold and unfold back and forth"><input id="loop" type="checkbox">Loop</label>
           </div>
@@ -83,8 +96,8 @@
             <label>Paper <input id="color-top" type="color"></label>
             <label>Reverse <input id="color-bottom" type="color"></label>
             <div id="swatches" class="swatches" role="group" aria-label="Washi paper presets"></div>
-            <label class="chip" title="Fold the creases of the solved base first, then those added by shaping"><input id="staged" type="checkbox" checked>Base first</label>
-            <label class="chip"><input id="creases" type="checkbox" checked>Creases</label>
+            <label class="chip" title="Fold progressively through box-pleated base collapse and sequential anatomical shaping stages"><input id="staged" type="checkbox" checked>Multi-stage</label>
+            <label class="chip"><input id="creases" type="checkbox">Creases</label>
             <label class="chip" title="Label the tip of each flap"><input id="show-pins" type="checkbox">Labels</label>
             <label class="chip" title="Make the paper translucent"><input id="xray" type="checkbox">X-ray</label>
           </div>
@@ -94,11 +107,16 @@
       <aside class="card inspector" aria-label="Model details">
         <div id="tabs" class="tabs" role="tablist">
           <button type="button" role="tab" data-tab="pattern" aria-selected="true">Crease pattern</button>
-          <button type="button" role="tab" data-tab="base" aria-selected="false" title="The crease pattern without the creases added by shaping">Base</button>
+          <button type="button" role="tab" data-tab="base" aria-selected="false" title="The solved flat-foldable base crease pattern">Base</button>
           <button type="button" role="tab" data-tab="packing" aria-selected="false" title="How the flaps and rivers of the stick figure tile the sheet">Packing</button>
           <button type="button" role="tab" data-tab="sticks" aria-selected="false">Stick figure</button>
+          <button type="button" role="tab" data-tab="schedule" aria-selected="false" title="Step-by-step box-pleated base collapse and anatomical 3D shaping stages">Multi-Stage Folding Schedule</button>
         </div>
         <svg id="diagram" class="diagram" role="img"></svg>
+        <div id="schedule-panel" class="schedule-panel" hidden>
+          <div id="schedule-meta" class="schedule-meta"></div>
+          <div id="phase-list" class="phase-list" role="list" aria-label="Multi-stage folding steps"></div>
+        </div>
         <p class="legend" data-tabs="pattern base">
           <span class="mountain">Mountain</span>
           <span class="valley">Valley</span>
@@ -110,6 +128,7 @@
           Click a region to find it on the model.
         </p>
         <p class="legend" data-tabs="sticks" hidden>Turns with the 3D view.</p>
+        <p class="legend" data-tabs="schedule" hidden>Click any stage to jump to it and highlight its active creases.</p>
 
         <dl class="metrics">
           <div><dt>Grid</dt><dd id="grid"></dd></div>
@@ -123,6 +142,14 @@
 
         <h2>Flaps and rivers</h2>
         <div id="regions" class="regions"></div>
+
+        <h2>Folding video</h2>
+        <div class="video-controls">
+          <select id="video-preset" class="select" aria-label="Video camera and folding choreography"></select>
+          <label class="chip" title="Overlay model title, active stage badge, and progress bar in the exported video"><input id="video-captions" type="checkbox" checked>Captions</label>
+          <button id="record-video" class="button primary" type="button">Record 1080p</button>
+          <a id="download-video" class="button" hidden download>Save last video</a>
+        </div>
 
         <h2>Downloads</h2>
         <div class="downloads">

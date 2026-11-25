@@ -105,7 +105,6 @@ function facesPath({flat}, faces, fill) {
   return svgElement('path', {
     d: faces.map((face) => `M${face.map(point).join('L')}Z`).join(''),
     fill,
-    // Without anti-aliasing no paper shows through between adjacent faces.
     'shape-rendering': 'crispEdges',
   });
 }
@@ -113,23 +112,23 @@ function facesPath({flat}, faces, fill) {
 /**
  * A stroked path along some edges of a model.
  *
- * A single path per kind of line keeps the DOM small for thousands of edges.
- *
  * @param {!Object} model Parsed model from `fold.js`.
  * @param {!Array<!Array<number>>} edges Vertex index pairs.
  * @param {string} stroke
- * @param {number} width Line width in screen pixels, whatever the units of
- *     the file.
+ * @param {number} width Line width in screen pixels.
+ * @param {number=} opacity Optional stroke opacity.
  * @return {!SVGPathElement}
  */
-function edgesPath({flat}, edges, stroke, width) {
+function edgesPath({flat}, edges, stroke, width, opacity = 1) {
   const point = pathPoint(flat);
-  return svgElement('path', {
+  const attrs = {
     d: edges.map(([u, v]) => `M${point(u)}L${point(v)}`).join(''),
     stroke,
     'stroke-width': width,
     'vector-effect': 'non-scaling-stroke',
-  });
+  };
+  if (opacity < 1) attrs['stroke-opacity'] = opacity;
+  return svgElement('path', attrs);
 }
 
 /**
@@ -155,7 +154,6 @@ function outlineEdges(faces) {
     face.forEach((u, i) => {
       const v = face[(i + 1) % face.length];
       const key = u < v ? `${u} ${v}` : `${v} ${u}`;
-      // Meeting an edge a second time means it is shared, hence interior.
       if (!outline.delete(key)) outline.set(key, [u, v]);
     });
   }
@@ -167,27 +165,71 @@ function outlineEdges(faces) {
  *
  * @param {!SVGSVGElement} svg
  * @param {!Object} model Parsed model from `fold.js`.
- * @param {{baseOnly: (boolean|undefined), highlight: (?number|undefined)}=}
- *     options `baseOnly` leaves out the creases added by shaping (this needs
- *     `model.shaping`); `highlight` is a region of the model to fill.
+ * @param {{
+ *   baseOnly: (boolean|undefined),
+ *   highlight: (?number|undefined),
+ *   activeEdges: (?Set<number>|undefined),
+ *   foldedEdges: (?Set<number>|undefined)
+ * }=} options
  */
 export function drawCreasePattern(
-    svg, model, {baseOnly = false, highlight = null} = {}) {
+    svg, model,
+    {baseOnly = false, highlight = null, activeEdges = null,
+     foldedEdges = null} = {}) {
   const sheet = startSheet(svg, model);
   if (highlight !== null) {
     sheet.append(
         facesPath(model, regionFaces(model, highlight), HIGHLIGHT_FILL));
   }
-  // Folded creases are drawn last, on top of flat ones.
+
+  const showLiveStage = !baseOnly && activeEdges && activeEdges.size > 0;
   const edges = {flat: [], B: [], M: [], V: []};
+  const upcoming = {M: [], V: []};
+  const active = {M: [], V: []};
+
   model.edges.forEach((edge, e) => {
-    if (baseOnly && model.shaping?.[e]) return;
-    const assignment = model.assignments[e];
-    edges[assignment in CREASE_STROKES ? assignment : 'flat'].push(edge);
+    let assignment = model.assignments[e];
+    if (baseOnly) {
+      if (model.baseFoldAngles) {
+        const baseAngle = model.baseFoldAngles[e];
+        if (assignment !== 'B') {
+          assignment = baseAngle < -1 ? 'M' : (baseAngle > 1 ? 'V' : 'F');
+          if (assignment === 'F' && model.shaping?.[e]) return;
+        }
+      } else if (model.shaping?.[e]) {
+        return;
+      }
+    }
+    if (!(assignment in CREASE_STROKES)) {
+      edges.flat.push(edge);
+    } else if (assignment === 'B') {
+      edges.B.push(edge);
+    } else if (showLiveStage) {
+      if (activeEdges.has(e)) {
+        active[assignment].push(edge);
+      } else if (foldedEdges?.has(e)) {
+        edges[assignment].push(edge);
+      } else {
+        upcoming[assignment].push(edge);
+      }
+    } else {
+      edges[assignment].push(edge);
+    }
   });
+
   sheet.append(edgesPath(model, edges.flat, FLAT_CREASE_STROKE, 0.5));
-  for (const [assignment, stroke] of Object.entries(CREASE_STROKES)) {
-    sheet.append(edgesPath(model, edges[assignment], stroke, 1));
+  if (showLiveStage) {
+    sheet.append(edgesPath(model, upcoming.M, CREASE_STROKES.M, 0.65, 0.28));
+    sheet.append(edgesPath(model, upcoming.V, CREASE_STROKES.V, 0.65, 0.28));
+    sheet.append(edgesPath(model, edges.M, CREASE_STROKES.M, 1, 0.62));
+    sheet.append(edgesPath(model, edges.V, CREASE_STROKES.V, 1, 0.62));
+    sheet.append(edgesPath(model, edges.B, CREASE_STROKES.B, 1.15));
+    sheet.append(edgesPath(model, active.M, CREASE_STROKES.M, 2.2));
+    sheet.append(edgesPath(model, active.V, CREASE_STROKES.V, 2.2));
+  } else {
+    for (const [assignment, stroke] of Object.entries(CREASE_STROKES)) {
+      sheet.append(edgesPath(model, edges[assignment], stroke, 1));
+    }
   }
 }
 
@@ -206,9 +248,6 @@ export function creasePatternSvg(model) {
 /**
  * Draws how a model's flaps and rivers tile the sheet, replacing the content
  * of `svg`.
- *
- * The path of region `r` carries `data-region="r"`, so that clicks can be
- * traced back to regions.
  *
  * @param {!SVGSVGElement} svg
  * @param {!Object} model Parsed model from `fold.js`.
@@ -232,19 +271,13 @@ export function drawPacking(svg, model, highlight = null) {
 /**
  * Positions of the joints of a `bp_pipeline` stick figure.
  *
- * Follows `StickFigure`: a stick leaves its `start` joint at `azimuth_angle`
- * (0 is forwards, 90 is to the left) and `elevation_angle` above horizontal.
- * The result uses the axes of the 3D stage: +X left, +Y up, +Z front.
- *
  * @param {!Object} stickFigure Parsed stick figure JSON.
- * @return {!Map<string, !Array<number>>} Position by joint name, with the
- *     root stick starting at the origin.
+ * @return {!Map<string, !Array<number>>}
  */
 export function jointPositions(stickFigure) {
   const sticks = stickFigure.children;
   const root = sticks.find((s) => s.name === stickFigure.root) ?? sticks[0];
   const positions = new Map([[root.start, [0, 0, 0]]]);
-  // Sticks are few, so sweep until every connected joint is placed.
   let placed;
   do {
     placed = false;
@@ -284,7 +317,6 @@ export function drawStickFigure(svg, stickFigure, view) {
       (i) => points.reduce((sum, p) => sum + p[i], 0) / points.length);
   const radius = Math.max(
       ...points.map((p) => Math.hypot(...p.map((x, i) => x - center[i]))));
-  // Screen x, screen y (downwards) and depth towards the viewer.
   const project = (p) => [0, 1, 2].map(
       (row) => (row === 1 ? -1 : 1) *
           p.reduce(
@@ -299,7 +331,6 @@ export function drawStickFigure(svg, stickFigure, view) {
                             start: project(joints.get(stick.start)),
                             end: project(joints.get(stick.end)),
                           }));
-  // Painter's algorithm: far sticks first.
   sticks.sort((a, b) => a.start[2] + a.end[2] - b.start[2] - b.end[2]);
   const figure = svgElement('g', {
     stroke: 'currentColor',
@@ -307,14 +338,12 @@ export function drawStickFigure(svg, stickFigure, view) {
     'stroke-linecap': 'round',
   });
   for (const {stick, start, end} of sticks) {
-    const depth = (start[2] + end[2]) / (2 * radius);  // -1 far to 1 near.
+    const depth = (start[2] + end[2]) / (2 * radius);
     const line = svgElement('line', {
       x1: start[0],
       y1: start[1],
       x2: end[0],
       y2: end[1],
-      // Stick widths are in the same units as their lengths; thin them so
-      // that the figure still reads as a skeleton.
       'stroke-width': Math.max(0.02 * radius, 0.12 * stick.width),
       opacity: 0.6 + 0.3 * depth,
     });

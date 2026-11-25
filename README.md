@@ -7,9 +7,10 @@ Global Flat-Foldability Verification.
 
 **Studio:**
 [COrigami Studio](https://google-deepmind.github.io/origami-design/) folds and
-unfolds the showcase models below in the browser, next to their crease
-patterns, packings and stick figures. It also opens the `shaped_3d.fold` that
-`bp-pipeline -o` writes for a design of your own.
+unfolds the showcase models below in the browser across 4-act multi-stage
+schedules, exports 1080p folding and 360° turntable videos, and displays their
+crease patterns, packings and stick figures. It also opens the `shaped_3d.fold`
+that `bp-pipeline -o` writes for a design of your own.
 
 ## Showcase
 
@@ -38,7 +39,7 @@ directory `docs/models/<slug>/` with three files:
 
 -   `shaped_3d.fold`, in the extended [FOLD](https://github.com/edemaine/fold)
     v1.1 layout that `bp-pipeline -o` writes (`file_frames[0]` plus the `bp:`
-    keys; see the canonical schema in
+    keys including `edges_bp:baseFoldAngle`; see the canonical schema in
     [`src/bp_pipeline/render_3d.py`](src/bp_pipeline/render_3d.py)
     `mesh_to_fold_dict`);
 -   `stick_figure.json`, the stick figure it was designed from;

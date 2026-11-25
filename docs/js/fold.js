@@ -13,7 +13,8 @@
 // limitations under the License.
 
 /**
- * @fileoverview Reads FOLD files and folds them as rigid faces about hinges.
+ * @fileoverview Reads FOLD files and folds them across multi-stage schedules
+ * by BFS hinge rotation.
  *
  * Free of DOM and three.js dependencies, so it also runs under Node.
  *
@@ -22,6 +23,8 @@
  * front of the paper, and a positive fold angle is a valley fold, which
  * raises the neighboring faces towards the front.
  */
+
+import {DEFAULT_STANDUP_START_T, evaluateScheduleAt, smootherstep} from './schedule.js';
 
 /**
  * A model that can be folded: a crease pattern with fold angles and,
@@ -37,6 +40,8 @@
  * @property {!Array<!Array<number>>} edges Vertex index pairs.
  * @property {!Array<string>} assignments FOLD edge assignments.
  * @property {!Float64Array} foldAngles Final fold angle per edge, in degrees.
+ * @property {!Float64Array} baseFoldAngles Solved-base fold angle per edge, in
+ *     degrees (`edges_bp:baseFoldAngle`, or derived from `edges_bp:shaping`).
  * @property {?Array<boolean>} shaping `edges_bp:shaping`: whether each crease
  *     was added by shaping rather than being part of the solved base.
  *     See `bp_pipeline.render_3d.mesh_to_fold_dict` for the canonical schema
@@ -125,6 +130,18 @@ export function parseFold(fold) {
 
   const flat = Float64Array.from(flatCoords.flatMap((p) => [p[0], p[1]]));
   const assignments = flatFrame.edges_assignment ?? edges.map(() => 'U');
+  const foldAngles = Float64Array.from(
+      flatFrame.edges_foldAngle ??
+      assignments.map((a) => ASSIGNMENT_ANGLES[a] ?? 0));
+  const shaping = flatFrame['edges_bp:shaping'] ?? null;
+  const rawBaseAngles = flatFrame['edges_bp:baseFoldAngle'] ?? null;
+  const baseFoldAngles = rawBaseAngles ?
+      Float64Array.from(rawBaseAngles) :
+      Float64Array.from(foldAngles, (angle, e) => {
+        if (shaping?.[e] || !'MV'.includes(assignments[e])) return 0;
+        return angle;
+      });
+
   const model = {
     title: fold.file_title ?? '',
     flat,
@@ -137,10 +154,9 @@ export function parseFold(fold) {
         (face) => signedArea2(face, flat) < 0 ? [...face].reverse() : face),
     edges,
     assignments,
-    foldAngles: Float64Array.from(
-        flatFrame.edges_foldAngle ??
-        assignments.map((a) => ASSIGNMENT_ANGLES[a] ?? 0)),
-    shaping: flatFrame['edges_bp:shaping'] ?? null,
+    foldAngles,
+    baseFoldAngles,
+    shaping,
     regions: flatFrame['file_bp:regions'] ?? [],
     faceRegions: flatFrame['faces_bp:region'] ?? [],
     gridSize: flatFrame['file_bp:gridSize'] ?? null,
@@ -152,25 +168,28 @@ export function parseFold(fold) {
 }
 
 /**
- * Mean edge-length error of the stored folded frame, in percent.
+ * Mean edge-length error of the stored folded frame (or an arbitrary 3D vertex
+ * buffer), in percent.
  *
  * The relative length error of each edge is averaged per vertex, then over
  * vertices.
  *
  * @param {!Model} model
- * @return {?number} Null if the model has no folded frame.
+ * @param {?Float32Array|?Float64Array=} coords3d Defaults to `model.folded`.
+ * @return {?number} Null if no 3D coordinates are available.
  */
-export function strainPercent(model) {
-  const {flat, folded, edges} = model;
-  if (!folded) return null;
+export function strainPercent(model, coords3d = model.folded) {
+  const {flat, edges} = model;
+  if (!coords3d) return null;
   const sums = new Float64Array(flat.length / 2);
   const counts = new Float64Array(flat.length / 2);
   for (const [u, v] of edges) {
     const flatLength = Math.hypot(
         flat[2 * u] - flat[2 * v], flat[2 * u + 1] - flat[2 * v + 1]);
     const foldedLength = Math.hypot(
-        folded[3 * u] - folded[3 * v], folded[3 * u + 1] - folded[3 * v + 1],
-        folded[3 * u + 2] - folded[3 * v + 2]);
+        coords3d[3 * u] - coords3d[3 * v],
+        coords3d[3 * u + 1] - coords3d[3 * v + 1],
+        coords3d[3 * u + 2] - coords3d[3 * v + 2]);
     const error = Math.abs(foldedLength / flatLength - 1);
     sums[u] += error;
     sums[v] += error;
@@ -220,14 +239,9 @@ export function regionTips(model) {
 }
 
 /**
- * Folds a model by rotating whole faces about their shared edges.
- *
- * One root face stays in the plane of the flat sheet. Every other face is
- * reached through a spanning tree of the face adjacency graph and rotated
- * about the hinge it shares with its parent. A crease pattern that is not
- * rigidly foldable does not close up exactly around its vertices, so each
- * vertex is placed at the mean of the positions given by its faces. This is
- * the same scheme as `render_3d.build_folded_mesh_3d` in `bp_pipeline`.
+ * Folds a model across a multi-stage schedule: rotates faces around a BFS
+ * spanning tree of hinges from `rootFace`, averages each vertex across its
+ * incident faces, and blends the Stage-2 residual to `model.folded`.
  */
 export class Folder {
   /** @param {!Model} model */
@@ -253,14 +267,8 @@ export class Folder {
         facesByEdge.get(key).push(f);
       }
     });
-    // Five numbers per hinge: parent face, child face, edge index (or -1 for
-    // an unlisted edge), and the hinge vertices ordered so that a positive
-    // angle about `from -> to` is a valley fold.
     const hinges = [];
-    /**
-     * Whether each face is connected to the root.
-     * @private @const {!Uint8Array}
-     */
+    /** @private @const {!Uint8Array} */
     this._reached = new Uint8Array(faces.length);
     this._reached[this.rootFace] = 1;
     const queue = [this.rootFace];
@@ -275,31 +283,19 @@ export class Folder {
           if (this._reached[child]) continue;
           this._reached[child] = 1;
           queue.push(child);
-          // The parent is counter-clockwise, so the child lies to the right
-          // of a -> b, and a valley fold turns it right-handedly about b -> a.
           hinges.push(parent, child, edgeIndex.get(key) ?? -1, b, a);
         }
       }
     }
-    /**
-     * Spanning-tree hinges in breadth-first order; see the constructor.
-     * @private @const {!Int32Array}
-     */
+    /** @private @const {!Int32Array} */
     this._hinges = Int32Array.from(hinges);
 
-    // Faces cut off from the root (a disconnected pattern) stay unfolded.
-    /**
-     * Number of reached faces around each vertex.
-     * @private @const {!Float64Array}
-     */
+    /** @private @const {!Float64Array} */
     this._faceCounts = new Float64Array(numVertices);
     faces.forEach((face, f) => {
       if (this._reached[f]) face.forEach((v) => this._faceCounts[v]++);
     });
-    /**
-     * Row-major 3x4 rigid transform per face.
-     * @private @const {!Float64Array}
-     */
+    /** @private @const {!Float64Array} */
     this._transforms = new Float64Array(12 * faces.length);
     /** @private @const {!Float64Array} */
     this._sums = new Float64Array(3 * numVertices);
@@ -315,49 +311,102 @@ export class Folder {
 
     /**
      * Row-major 3x3 rotation from the frame of `positions` to the file's
-     * folded frame, or null if the model has none. `bp_pipeline` stores models
-     * standing upright, whereas hinge folding leaves the root face lying in
-     * the flat sheet's plane; the two differ by the motion of the root face.
+     * folded frame, or null if the model has none.
      * @const {?Array<number>}
      */
     this.pose = model.folded ? this._rootFaceRotation() : null;
-    /**
-     * Per coordinate, what the hinge folding at the final angles lacks to reach
-     * the file's folded frame, or null if the model has none.
-     * @private @const {?Float32Array}
-     */
+    /** @private @const {?Float32Array} */
     this._residual = this.pose ? this._residualToFoldedFrame() : null;
+
+    /** @private {?Object} Multi-stage schedule object. */
+    this._schedule = null;
+    /**
+     * Latest evaluated schedule state (label, activePhaseIndex, activeEdges,
+     * foldedEdges, diagramKey, strainPct).
+     * @type {?Object}
+     */
+    this.lastState = null;
+  }
+
+  /**
+   * Attaches a multi-stage folding schedule.
+   *
+   * @param {?Object} schedule Schedule built by `buildFoldingSchedule`.
+   */
+  setSchedule(schedule) {
+    this._schedule = schedule;
+  }
+
+  /**
+   * Upright stand-up blend in `[0, 1]`: stays flat on the studio table (`0`)
+   * throughout Act I collapse and Act II flat-clipping, then rises smoothly.
+   *
+   * @param {number} progress From 0 (flat) to 1 (folded).
+   * @param {boolean} staged Whether multi-stage folding is enabled.
+   * @return {number}
+   */
+  standupProgress(progress, staged) {
+    if (!staged || !this._schedule) {
+      return smootherstep(progress);
+    }
+    const {standupStartT = DEFAULT_STANDUP_START_T} = this._schedule;
+    if (standupStartT >= 1 - 1e-5 || progress <= standupStartT) return 0;
+    return smootherstep(
+        (progress - standupStartT) / Math.max(1e-5, 0.48 * (1 - standupStartT)));
   }
 
   /**
    * Vertex positions part of the way through the folding animation.
    *
-   * Every crease moves linearly towards its final angle. In staged mode the
-   * creases of the solved base fold during the first half and the creases
-   * added by shaping during the second (this needs `model.shaping`).
-   *
-   * The file's folded frame, when present, is authoritative for the final
-   * shape: whatever hinge folding lacks to reach it is blended in linearly, so
-   * that progress 1 reproduces the file exactly.
-   *
    * @param {number} progress From 0 (flat) to 1 (folded).
-   * @param {boolean} staged Whether to fold the base before the shaping.
+   * @param {boolean} staged Whether to fold along the multi-stage schedule.
    * @return {!Float32Array} `this.positions`.
    */
   positionsAt(progress, staged) {
-    const {foldAngles, shaping} = this._model;
-    const split = staged && shaping !== null;
-    const base = split ? Math.min(1, 2 * progress) : progress;
-    const late = split ? Math.max(0, 2 * progress - 1) : progress;
-    for (let e = 0; e < foldAngles.length; e++) {
-      this._angles[e] = foldAngles[e] * (shaping?.[e] ? late : base);
+    const p = Math.max(0, Math.min(1, progress));
+    const {foldAngles, baseFoldAngles, shaping} = this._model;
+    const useSchedule = staged && this._schedule !== null;
+
+    const evalInfo = useSchedule ?
+        evaluateScheduleAt(
+            this._schedule, foldAngles.length, p, this._angles) :
+        null;
+
+    let residualWeight = p;
+    if (useSchedule) {
+      residualWeight = smootherstep(evalInfo.stage2Progress);
+    } else {
+      const split = staged && shaping !== null;
+      const base = split ? Math.min(1, 2 * p) : p;
+      const late = split ? Math.max(0, 2 * p - 1) : p;
+      for (let e = 0; e < foldAngles.length; e++) {
+        this._angles[e] = base * baseFoldAngles[e] +
+            late * (foldAngles[e] - baseFoldAngles[e]);
+      }
+      residualWeight = split ? smootherstep(late) : p;
     }
+
     const positions = this._foldByHinges(this._angles);
-    if (this._residual) {
+    if (this._residual && residualWeight > 0) {
       for (let i = 0; i < positions.length; i++) {
-        positions[i] += progress * this._residual[i];
+        positions[i] += residualWeight * this._residual[i];
       }
     }
+    this.lastState = evalInfo ?
+        {...evalInfo, strainPct: strainPercent(this._model, positions) ?? 0} :
+        {
+          label: p <= 1e-4 ? 'Flat Uncut Crease Pattern' :
+                             (p >= 1 - 1e-4 ? 'Final 3D Sculpted Origami' :
+                                              'Simultaneous Crease Folding'),
+          activePhaseIndex: -1,
+          activeEdges: new Set(),
+          foldedEdges: new Set(),
+          diagramKey: p <= 1e-4 ?
+              'flat' :
+              (p >= 1 - 1e-4 ? 'folded' : 'simultaneous'),
+          stage2Progress: p,
+          strainPct: strainPercent(this._model, positions) ?? 0,
+        };
     return positions;
   }
 
@@ -383,7 +432,6 @@ export class Folder {
         m.copyWithin(c, p, p + 12);
         continue;
       }
-      // Hinge end points where the parent has put them (flat z is zero).
       const from = 2 * hinges[h + 3];
       const to = 2 * hinges[h + 4];
       const ax = m[p] * flat[from] + m[p + 1] * flat[from + 1] + m[p + 3];
@@ -397,7 +445,6 @@ export class Folder {
       dy /= length;
       dz /= length;
 
-      // Rodrigues rotation about the hinge direction.
       const cos = Math.cos(angle);
       const sin = Math.sin(angle);
       const k = 1 - cos;
@@ -410,7 +457,6 @@ export class Folder {
       const r20 = k * dz * dx - sin * dy;
       const r21 = k * dz * dy + sin * dx;
       const r22 = cos + k * dz * dz;
-      // child = (rotation about the hinge through a) * parent.
       for (let col = 0; col < 3; col++) {
         const x = m[p + col];
         const y = m[p + 4 + col];
@@ -462,19 +508,14 @@ export class Folder {
   _rootFaceRotation() {
     const {flat, folded, faces} = this._model;
     const face = faces[this.rootFace];
-    // Span the face by its first vertex and the vertex farthest from it.
     const a = face[0];
     const distance = (v) => Math.hypot(
         flat[2 * v] - flat[2 * a], flat[2 * v + 1] - flat[2 * a + 1]);
     const b = face.reduce((far, v) => distance(v) > distance(far) ? v : far);
 
-    // Orthonormal frame of the flat face: along a -> b, sideways, normal +z.
     const e1 = normalize(
         [flat[2 * b] - flat[2 * a], flat[2 * b + 1] - flat[2 * a + 1], 0]);
     const e2 = [-e1[1], e1[0], 0];
-    // The same frame on the folded face. Newell's method gives the normal of
-    // a polygon that is only nearly planar; the face is counter-clockwise, so
-    // this is the image of +z.
     const newell = [0, 0, 0];
     for (let i = 0; i < face.length; i++) {
       const p = 3 * face[i];
@@ -496,7 +537,6 @@ export class Folder {
     const rotation = [];
     for (let row = 0; row < 3; row++) {
       for (let col = 0; col < 3; col++) {
-        // The flat normal is +z, so f3 only feeds the third column.
         rotation.push(
             f1[row] * e1[col] + f2[row] * e2[col] + (col === 2 ? f3[row] : 0));
       }
@@ -520,14 +560,16 @@ export class Folder {
     const numVertices = hinged.length / 3;
     for (let v = 0; v < numVertices; v++) {
       for (let i = 0; i < 3; i++) {
-        // Transposed rotation: from the file's frame back to this one.
         const target = r[i] * folded[3 * v] + r[3 + i] * folded[3 * v + 1] +
             r[6 + i] * folded[3 * v + 2];
         residual[3 * v + i] = target - hinged[3 * v + i];
         mean[i] += residual[3 * v + i] / numVertices;
       }
     }
-    for (let i = 0; i < residual.length; i++) residual[i] -= mean[i % 3];
+    for (let i = 0; i < residual.length; i++) {
+      residual[i] -= mean[i % 3];
+      hinged[i] += residual[i];
+    }
     return residual;
   }
 }

@@ -43,6 +43,10 @@ const XRAY_OPACITY = 0.55;
 /** Color of the highlighted region of the paper. */
 const HIGHLIGHT_COLOR = 0xf59e0b;
 
+/** Colors for creases actively folding in the current multi-stage step. */
+const ACTIVE_MOUNTAIN_COLOR = 0xdc2626;
+const ACTIVE_VALLEY_COLOR = 0x2563eb;
+
 /**
  * Loads three.js, OrbitControls, and RoomEnvironment via the page's import map.
  *
@@ -201,16 +205,9 @@ export class Stage {
     this._model = null;
     /** @private {?Folder} */
     this._folder = null;
-    /**
-     * Vertex positions shared by all paper geometry; owned by the folder.
-     * @private {?Object}
-     */
+    /** @private {?Object} */
     this._positions = null;
-    /**
-     * Flat-sheet UV coordinates shared by paper meshes so fiber grain folds
-     * physically with each facet.
-     * @private {?Object}
-     */
+    /** @private {?Object} */
     this._uvs = null;
     /** @private @const {!Object} */
     this._flatPose = new THREE.Quaternion();
@@ -218,11 +215,25 @@ export class Stage {
     this._foldedPose = new THREE.Quaternion();
     /** @private {{azimuth: number, elevation: number}} */
     this._hero = DEFAULT_HERO;
-    /**
-     * Bounding radius the camera distance was last matched to.
-     * @private {number}
-     */
+    /** @private {number} */
     this._radius = 0;
+    /** @private {boolean} */
+    this._xray = false;
+    /** @private {boolean} */
+    this._creasesVisible = false;
+    /** @private {number} */
+    this._progress = 1;
+    /** @private {boolean} */
+    this._videoMode = false;
+    /**
+     * Eye-space ray bias on the reverse side: shifts reverse-side fragments
+     * back along the camera ray by up to 0.9% of camera distance so warped
+     * interior layers do not bleed through exterior colored faces while screen
+     * (x, y) stays fixed. Stopgap: this also suppresses genuine reverse-color
+     * details that sit within 0.9% of camera distance of a colored face.
+     * @private @const {{value: number}}
+     */
+    this._reverseBiasUniform = {value: 0};
 
     /** @private @const {!Object} */
     this._renderer =
@@ -251,7 +262,6 @@ export class Stage {
     key.position.set(1.6, 2.7, 1.9);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
-    // The flat sheet has a half-diagonal of 0.71.
     Object.assign(
         key.shadow.camera,
         {left: -1.1, right: 1.1, top: 1.1, bottom: -1.1, near: 0.2, far: 8});
@@ -259,8 +269,6 @@ export class Stage {
     fill.position.set(-1.9, 1.2, -1.2);
     this._scene.add(key, fill);
 
-    // Shows only the paper's shadow. It sits a hair below the paper so that
-    // the unfolded sheet does not coincide with it.
     const ground = new THREE.Mesh(
         new THREE.PlaneGeometry(8, 8).rotateX(-Math.PI / 2),
         new THREE.ShadowMaterial({opacity: 0.18}));
@@ -268,14 +276,6 @@ export class Stage {
     ground.receiveShadow = true;
     this._scene.add(ground);
 
-    // The two sides of the paper are separate meshes over the same geometry,
-    // so each can have its own color without a custom shader. Flat shading
-    // derives normals per pixel, so the geometry needs none.
-    //
-    // Folded layers lie exactly on top of each other and the file does not
-    // say in which order, so polygon offsets decide what shows where surfaces
-    // coincide: crease lines (no offset) over the highlight, over the display
-    // side of the paper, over its reverse.
     const washiBump = buildWashiBumpTexture(THREE);
     const paperMaterial = (side, depthOffset, bumpScale) =>
         new THREE.MeshStandardMaterial({
@@ -292,11 +292,28 @@ export class Stage {
           polygonOffsetUnits: depthOffset,
         });
     /**
-     * The side of the paper the crease pattern is drawn on.
+     * The side of the paper the crease pattern is drawn on (reverse).
      * @private @const {!Object}
      */
     this._front =
         new THREE.Mesh(undefined, paperMaterial(THREE.FrontSide, 3, 0.0035));
+    this._front.material.onBeforeCompile = (shader) => {
+      // Shifts reverse-side fragments away along the eye ray by uReverseBias
+      // (up to 0.9% of camera distance). Stopgap: hides warped interior layer
+      // interpenetration, at the cost of suppressing genuine reverse-color
+      // details within 0.9% of camera distance of a colored face.
+      shader.uniforms.uReverseBias = this._reverseBiasUniform;
+      shader.vertexShader = 'uniform float uReverseBias;\n' +
+          shader.vertexShader.replace(
+              '#include <project_vertex>',
+              `vec4 mvPosition = vec4( transformed, 1.0 );
+               #ifdef USE_INSTANCING
+                 mvPosition = instanceMatrix * mvPosition;
+               #endif
+               mvPosition = modelViewMatrix * mvPosition;
+               mvPosition.xyz *= 1.0 + uReverseBias;
+               gl_Position = projectionMatrix * mvPosition;`);
+    };
     /** @private @const {!Object} */
     this._back =
         new THREE.Mesh(undefined, paperMaterial(THREE.BackSide, 2, 0.0035));
@@ -310,9 +327,24 @@ export class Stage {
     this._creases = new THREE.LineSegments(
         undefined,
         new THREE.LineBasicMaterial({transparent: true, opacity: 0.45}));
-    this._paper.add(this._front, this._back, this._highlight, this._creases);
+    this._creases.visible = false;
+    /** @private @const {!Object} */
+    this._activeMountains = new THREE.LineSegments(
+        undefined,
+        new THREE.LineBasicMaterial(
+            {color: ACTIVE_MOUNTAIN_COLOR, transparent: true, opacity: 0.92}));
+    /** @private @const {!Object} */
+    this._activeValleys = new THREE.LineSegments(
+        undefined,
+        new THREE.LineBasicMaterial(
+            {color: ACTIVE_VALLEY_COLOR, transparent: true, opacity: 0.92}));
+    this._activeMountains.visible = false;
+    this._activeValleys.visible = false;
+
+    this._paper.add(
+        this._front, this._back, this._highlight, this._creases,
+        this._activeMountains, this._activeValleys);
     for (const object of this._paper.children) {
-      // Bounding spheres would go stale as the paper folds.
       object.frustumCulled = false;
     }
     this._scene.add(this._paper);
@@ -320,6 +352,7 @@ export class Stage {
     new ResizeObserver(() => this._resize()).observe(canvas.parentElement);
     this._resize();
     this._renderer.setAnimationLoop(() => {
+      if (this._videoMode) return;
       this._controls.update();
       this._renderer.render(this._scene, this._camera);
       this._placePins();
@@ -332,11 +365,13 @@ export class Stage {
    * @param {!Object} model Parsed model from `fold.js`.
    * @param {{azimuth: number, elevation: number}=} hero Camera angles of the
    *     'hero' view, in degrees.
+   * @param {?Object=} schedule Optional multi-stage schedule.
    */
-  setModel(model, hero = DEFAULT_HERO) {
+  setModel(model, hero = DEFAULT_HERO, schedule = null) {
     const THREE = this._three;
     this._model = model;
     this._folder = new Folder(model);
+    this._folder.setSchedule(schedule);
     this._hero = hero;
     this._positions = new THREE.BufferAttribute(this._folder.positions, 3);
     this._positions.setUsage(THREE.DynamicDrawUsage);
@@ -348,6 +383,8 @@ export class Stage {
         this._creases,
         model.edges.filter((_, e) => 'MVB'.includes(model.assignments[e]))
             .flat());
+    this._setGeometry(this._activeMountains, []);
+    this._setGeometry(this._activeValleys, []);
     this.setHighlight(null);
 
     this._flatPose.setFromRotationMatrix(this._flatOnGround);
@@ -357,37 +394,38 @@ export class Stage {
           pose[0], pose[1], pose[2], 0, pose[3], pose[4], pose[5], 0, pose[6],
           pose[7], pose[8], 0, 0, 0, 0, 1);
       this._foldedPose.setFromRotationMatrix(rotation);
-      // The flat sheet may face any way round on the ground. Turn it about
-      // the vertical to the yaw nearest the folded pose, which maximizes the
-      // trace of yaw * FLAT_ON_GROUND * rotation^T, so that unfolding does not
-      // spin the model needlessly.
       const m = rotation.transpose().premultiply(this._flatOnGround).elements;
       const yaw = Math.atan2(m[2] - m[8], m[0] + m[10]);
       this._flatPose.premultiply(
           new THREE.Quaternion().setFromAxisAngle(this._up, yaw));
     } else {
-      // Without a folded frame there is no upright pose to turn to.
       this._foldedPose.copy(this._flatPose);
     }
 
     this._radius = 0;
-    this.setFold(1, false);
+    this.setFold(1, Boolean(schedule));
     this.setView('hero');
   }
 
   /**
-   * Folds the paper; see `Folder.positionsAt`.
+   * Folds the paper and returns the latest schedule evaluation state.
    *
    * @param {number} progress From 0 (flat) to 1 (folded).
-   * @param {boolean} staged Whether to fold the base before the shaping.
+   * @param {boolean} staged Whether to fold along the multi-stage schedule.
+   * @return {?Object} `this._folder.lastState`.
    */
   setFold(progress, staged) {
+    if (!this._folder) return null;
     const THREE = this._three;
+    this._progress = progress;
     const positions = this._folder.positionsAt(progress, staged);
     this._positions.needsUpdate = true;
+    this._updateReverseBias();
+    this._updateActiveCreases(progress);
 
-    // Turn the sheet from lying flat to the folded pose as it folds.
-    const ease = progress * progress * (3 - 2 * progress);
+    // Keep the sheet flat on the table through Act I collapse and Act II
+    // flat-clipping, then smoothly stand upright during 3D posing.
+    const ease = this._folder.standupProgress(progress, staged);
     const pose = this._paper.quaternion.slerpQuaternions(
         this._flatPose, this._foldedPose, ease);
     const box = new THREE.Box3();
@@ -395,7 +433,6 @@ export class Stage {
     for (let i = 0; i < positions.length; i += 3) {
       box.expandByPoint(point.fromArray(positions, i).applyQuaternion(pose));
     }
-    // Stand the paper on the ground, centered on the vertical axis.
     const center = box.getCenter(new THREE.Vector3());
     this._paper.position.set(-center.x, -box.min.y, -center.z);
     let radius = 0;
@@ -404,14 +441,15 @@ export class Stage {
       radius = Math.max(radius, point.distanceTo(center));
     }
 
-    // Follow the paper with the camera, keeping its apparent size: the flat
-    // sheet is much larger than the folded model.
     const target = this._controls.target;
     const offset = this._camera.position.clone().sub(target);
-    if (this._radius > 0) offset.multiplyScalar(radius / this._radius);
+    if (this._radius > 0 && radius > 0) {
+      offset.multiplyScalar(radius / this._radius);
+    }
     target.set(0, center.y - box.min.y, 0);
     this._camera.position.copy(target).add(offset);
     this._radius = radius;
+    return this._folder.lastState;
   }
 
   /**
@@ -423,8 +461,6 @@ export class Stage {
     const THREE = this._three;
     const view = VIEWS[name] ?? [this._hero.azimuth, this._hero.elevation];
     const [azimuth, elevation] = view.map(THREE.MathUtils.degToRad);
-    // The distance at which the model's bounding sphere just fits the
-    // narrower of the two fields of view.
     const halfAngle = THREE.MathUtils.degToRad(FIELD_OF_VIEW / 2);
     const narrowHalfAngle =
         Math.atan(Math.tan(halfAngle) * Math.min(1, this._camera.aspect));
@@ -440,9 +476,6 @@ export class Stage {
   /**
    * Sets the colors of the two sides of the paper.
    *
-   * Crease patterns are drawn on the reverse of the paper, the side that
-   * mostly ends up inside the model.
-   *
    * @param {string} top CSS color of the display side.
    * @param {string} bottom CSS color of the reverse, which carries the crease
    *     pattern.
@@ -451,7 +484,6 @@ export class Stage {
     const THREE = this._three;
     this._back.material.color.set(top);
     this._front.material.color.set(bottom);
-    // Crease lines contrast with the display side, whatever its lightness.
     const {h, s, l} =
         this._back.material.color.getHSL({}, THREE.SRGBColorSpace);
     this._creases.material.color.setHSL(
@@ -460,17 +492,21 @@ export class Stage {
 
   /** @param {boolean} visible Whether to draw creases and the paper's edge. */
   setCreasesVisible(visible) {
+    this._creasesVisible = visible;
     this._creases.visible = visible;
+    this._updateActiveCreases(this._progress);
   }
 
   /** @param {boolean} xray Whether the paper is translucent. */
   setXray(xray) {
+    this._xray = xray;
     for (const {material} of [this._front, this._back]) {
       material.transparent = xray;
       material.opacity = xray ? XRAY_OPACITY : 1;
       material.depthWrite = !xray;
       material.needsUpdate = true;
     }
+    this._updateReverseBias();
   }
 
   /** @param {?number} region Region of the model to pick out, or null. */
@@ -502,30 +538,207 @@ export class Stage {
     this._controls.autoRotate = rotate;
   }
 
+  /** @return {{azimuth: number, elevation: number}} Hero camera angles. */
+  get hero() {
+    return {...this._hero};
+  }
+
+  /** @return {?Object} Latest schedule state evaluated by `Folder`. */
+  get lastState() {
+    return this._folder?.lastState ?? null;
+  }
+
   /**
-   * Registers a listener for when the user starts moving the camera.
+   * Captures camera and fold state so it can be restored after video export.
    *
-   * @param {function()} listener
+   * @return {!Object}
    */
+  captureState() {
+    return {
+      position: this._camera.position.clone(),
+      target: this._controls.target.clone(),
+      autoRotate: this._controls.autoRotate,
+      progress: this._progress,
+    };
+  }
+
+  /**
+   * Computes a smooth bounding-radius envelope across the fold so video export
+   * frames both the flat sheet and 360-degree 3D spin without camera pumping.
+   *
+   * @param {boolean} staged
+   * @return {{
+   *   flatRadius: number,
+   *   foldedRadius: number,
+   *   radiusAt: function(number): number,
+   * }}
+   */
+  computeVideoEnvelope(staged) {
+    if (!this._folder) {
+      return {flatRadius: 0.75, foldedRadius: 0.5, radiusAt: () => 0.75};
+    }
+    const THREE = this._three;
+    const savedProgress = this._progress;
+    const box = new THREE.Box3();
+    const point = new THREE.Vector3();
+    const pose = new THREE.Quaternion();
+
+    const measureAt = (p) => {
+      const positions = this._folder.positionsAt(p, staged);
+      const ease = this._folder.standupProgress(p, staged);
+      pose.slerpQuaternions(this._flatPose, this._foldedPose, ease);
+      box.makeEmpty();
+      for (let i = 0; i < positions.length; i += 3) {
+        box.expandByPoint(point.fromArray(positions, i).applyQuaternion(pose));
+      }
+      const center = box.getCenter(new THREE.Vector3());
+      let r = 0;
+      for (let i = 0; i < positions.length; i += 3) {
+        point.fromArray(positions, i).applyQuaternion(pose);
+        r = Math.max(r, point.distanceTo(center));
+      }
+      return r;
+    };
+
+    const flatRadius = Math.max(0.25, measureAt(0));
+    let foldedRadius = Math.max(0.2, measureAt(1));
+    for (let k = 6; k <= 15; k++) {
+      foldedRadius = Math.max(foldedRadius, measureAt(k / 15));
+    }
+    this._folder.positionsAt(savedProgress, staged);
+
+    return {
+      flatRadius,
+      foldedRadius,
+      radiusAt(progress) {
+        const u = Math.max(0, Math.min(1, progress));
+        const s = u * u * u * (u * (u * 6 - 15) + 10);
+        return (1 - s) * (flatRadius * 1.1) + s * (foldedRadius * 1.18);
+      },
+    };
+  }
+
+  /**
+   * Switches the stage into fixed-resolution video render mode.
+   *
+   * @param {number} width
+   * @param {number} height
+   */
+  beginVideoSession(width, height) {
+    this._videoMode = true;
+    this._controls.enabled = false;
+    this._renderer.domElement.parentElement?.classList.add('recording');
+    this._renderer.setPixelRatio(1);
+    this._renderer.setSize(width, height, false);
+    this._camera.aspect = width / height;
+    this._camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Renders a single video frame at `(progress, azimuth, elevation, radius)`
+   * and returns the canvas and schedule state.
+   *
+   * @param {{
+   *   progress: number,
+   *   staged: boolean,
+   *   azimuthDeg: number,
+   *   elevationDeg: number,
+   *   radius: number,
+   * }} params
+   * @return {{canvas: !HTMLCanvasElement, state: ?Object}}
+   */
+  renderVideoFrame({progress, staged, azimuthDeg, elevationDeg, radius}) {
+    const THREE = this._three;
+    const state = this.setFold(progress, staged);
+    const azimuth = THREE.MathUtils.degToRad(azimuthDeg);
+    const elevation = THREE.MathUtils.degToRad(elevationDeg);
+    const halfAngle = THREE.MathUtils.degToRad(FIELD_OF_VIEW / 2);
+    const narrowHalfAngle =
+        Math.atan(Math.tan(halfAngle) * Math.min(1, this._camera.aspect));
+    const distance = Math.max(0.15, radius / Math.sin(narrowHalfAngle));
+    this._camera.position
+        .set(
+            Math.cos(elevation) * Math.sin(azimuth),
+            Math.sin(elevation),
+            Math.cos(elevation) * Math.cos(azimuth))
+        .multiplyScalar(distance)
+        .add(this._controls.target);
+    this._camera.lookAt(this._controls.target);
+    this._renderer.render(this._scene, this._camera);
+    this._placePins();
+    return {canvas: this._renderer.domElement, state};
+  }
+
+  /**
+   * Exits video render mode and restores the interactive viewport state.
+   *
+   * @param {!Object} savedState State captured by `captureState()`.
+   */
+  endVideoSession(savedState) {
+    this._videoMode = false;
+    this._controls.enabled = true;
+    this._renderer.domElement.parentElement?.classList.remove('recording');
+    this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this._resize();
+    if (savedState) {
+      this.setFold(savedState.progress, true);
+      this._controls.target.copy(savedState.target);
+      this._camera.position.copy(savedState.position);
+      this._controls.autoRotate = savedState.autoRotate;
+      this._controls.update();
+    }
+  }
+
+  /** @param {function()} listener */
   onInteraction(listener) {
     this._controls.addEventListener('start', listener);
   }
 
-  /**
-   * Registers a listener for camera movement of any origin.
-   *
-   * @param {function(!Array<number>)} listener Receives the row-major 3x3
-   *     rotation from world to camera axes (x right, y up, z towards the
-   *     viewer).
-   */
+  /** @param {function(!Array<number>)} listener */
   onViewChange(listener) {
     this._controls.addEventListener('change', () => {
-      // The camera's axes in the world are the rows of the rotation from
-      // world to camera, and the columns of its (column-major) world matrix.
       this._camera.updateMatrixWorld();
       const m = this._camera.matrixWorld.elements;
       listener([m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10]]);
     });
+  }
+
+  /** @private */
+  _updateReverseBias() {
+    if (this._xray || this._progress <= 0.05) {
+      this._reverseBiasUniform.value = 0;
+      return;
+    }
+    const u = Math.max(0, Math.min(1, (this._progress - 0.05) / 0.25));
+    this._reverseBiasUniform.value = 0.009 * u * u * (3 - 2 * u);
+  }
+
+  /**
+   * Highlights creases belonging to the active stage while folding.
+   *
+   * @private
+   * @param {number} progress
+   */
+  _updateActiveCreases(progress) {
+    const active = this._folder?.lastState?.activeEdges;
+    if (!this._creasesVisible || !this._model || !active?.size ||
+        progress <= 0.005 || progress >= 0.995) {
+      this._activeMountains.visible = false;
+      this._activeValleys.visible = false;
+      return;
+    }
+    const mountains = [];
+    const valleys = [];
+    for (const e of active) {
+      const [u, v] = this._model.edges[e];
+      const assignment = this._model.assignments[e];
+      if (assignment === 'M') mountains.push(u, v);
+      else if (assignment === 'V') valleys.push(u, v);
+    }
+    this._activeMountains.visible = mountains.length > 0;
+    this._activeValleys.visible = valleys.length > 0;
+    if (mountains.length > 0) this._activeMountains.geometry.setIndex(mountains);
+    if (valleys.length > 0) this._activeValleys.geometry.setIndex(valleys);
   }
 
   /**
@@ -546,12 +759,9 @@ export class Stage {
     object.geometry = geometry;
   }
 
-  /**
-   * Matches renderer and camera aspect ratio to the canvas container.
-   *
-   * @private
-   */
+  /** @private */
   _resize() {
+    if (this._videoMode) return;
     const {clientWidth, clientHeight} = this._renderer.domElement.parentElement;
     if (clientWidth === 0 || clientHeight === 0) return;
     this._renderer.setSize(clientWidth, clientHeight, false);
@@ -559,11 +769,7 @@ export class Stage {
     this._camera.updateProjectionMatrix();
   }
 
-  /**
-   * Moves each pin over the screen position of its vertex.
-   *
-   * @private
-   */
+  /** @private */
   _placePins() {
     if (this._pinLayer.hidden || !this._folder) return;
     const THREE = this._three;
@@ -576,7 +782,7 @@ export class Stage {
       const x = (point.x + 1) / 2 * clientWidth;
       const y = (1 - point.y) / 2 * clientHeight;
       element.style.transform = `translate(${x}px, ${y}px)`;
-      element.hidden = point.z > 1;  // Behind the camera.
+      element.hidden = point.z > 1;
     }
   }
 }
