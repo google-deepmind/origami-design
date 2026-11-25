@@ -23,6 +23,7 @@ from typing import Any, Literal
 import networkx as nx
 
 from . import converters
+from . import shaping_templates
 from . import stick as stick_lib
 from . import stick_figure
 
@@ -310,6 +311,12 @@ def prevalidate(
       if use_shaping_flaps:
         if not shaping_flaps:
           errors.append(f"{prefix} should include shaping flaps.")
+        else:
+          # Enforces the builtin template packer's structural and count limits
+          # (<= 2 TailTemplates and <= 4 corner KneeTemplates / <= 2 pairs).
+          errors.extend(
+              shaping_templates.validate_shaping_flap_templates(raw_tree)
+          )
       else:
         if shaping_flaps:
           errors.append(f"{prefix} should not include shaping flaps.")

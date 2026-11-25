@@ -40,6 +40,7 @@ from .crease_pattern import visualize
 from .crease_pattern.parser import svg as svg_parser
 from .packing import config as packing_config_lib
 from .packing import packing_output as packing_output_lib
+from .packing import shaping_flap_templates
 from .packing import utils_solver
 from .shaping import bus_adapter
 from .shaping import geometric_fold_3d_heuristics
@@ -47,6 +48,7 @@ from .shaping import heuristics_3d
 from .solving import central_fold_utils
 from .solving import hinges as hinge_utils
 from .solving import solvability
+from .stick_figures import shaping_templates
 from .stick_figures import stick_figure
 from .stick_figures import visualize as stick_figure_visualize
 
@@ -1153,6 +1155,20 @@ def pack_crease_pattern(
   is_symmetric = stick_figure_input.is_symmetric_tree
   stick_figure_obj = stick_figure_input.merged_stick_figure.stick_figure
   base_grid_size = stick_figure_obj.get_packing_gridsize()
+  from . import plugins  # pylint: disable=g-import-not-at-top
+
+  if (
+      plugins.resolve_packer(config.packer) == 'builtin'
+      and config.extra_grid_size == 0
+      and 'extra_grid_size' not in config.sweep_hparams
+      and shaping_templates.has_shaping_flaps(stick_figure_obj)
+  ):
+    base_grid_size = max(
+        base_grid_size,
+        shaping_flap_templates.estimate_template_min_grid_size(
+            stick_figure_obj, is_symmetric
+        ),
+    )
   if is_symmetric and base_grid_size % 2 == 1:
     base_grid_size += 1
   max_grid_size = stick_figure_input.max_grid_size

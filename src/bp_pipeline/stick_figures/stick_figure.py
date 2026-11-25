@@ -530,12 +530,13 @@ class StickFigure:
     return chain
 
   def merge_linear_chains(
-      self, ignore_shaping_flaps: bool = False
+      self, ignore_shaping_flaps: bool = True
   ) -> tuple['StickFigure', dict[str, list[str]]]:
     """Merges all linear chains of sticks into single sticks.
 
     Args:
-      ignore_shaping_flaps: If True, shaping flaps will not be merged.
+      ignore_shaping_flaps: If True, degree-2 joints incident to shaping_flap
+        sticks are preserved so shaping-flap template hinges remain unmerged.
 
     Returns:
       A new StickFigure with linear chains merged and a dictionary mapping
@@ -545,7 +546,13 @@ class StickFigure:
     new_children = []
     visited_sticks = set()
     degree2_joints = {
-        j_name for j_name, j in self.joints.items() if j.degree == 2
+        j_name
+        for j_name, j in self.joints.items()
+        if j.degree == 2
+        and (
+            not ignore_shaping_flaps
+            or not any(s.shaping_flap for s in j.sticks)
+        )
     }
     new_root = self.root
 

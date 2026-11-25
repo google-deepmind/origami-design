@@ -15,6 +15,7 @@
 
 """Utilities for packing flaps enclosed by rivers."""
 
+from collections.abc import Mapping
 import copy
 import logging
 
@@ -70,6 +71,8 @@ def get_enclosed_pocket_mask(
     tree: stick_figure_lib.StickFigure,
     stack: list[types.RiverStackFrame],
     current_river_cand: types.RiverCandidate,
+    *,
+    preplaced_joint_to_side: Mapping[str, Mapping[str, str]] | None = None,
 ) -> np.ndarray | None:
   """Computes mask for a pocket enclosed by multiple rivers.
 
@@ -79,6 +82,8 @@ def get_enclosed_pocket_mask(
     tree: The stick figure.
     stack: The river stack.
     current_river_cand: The current river candidate.
+    preplaced_joint_to_side: Optional joint-to-side map for pre-placed rivers on
+      `tracker_with_all_rivers` that do not appear in `stack`.
 
   Returns:
     A boolean mask for the pocket, or None if any of the boundary rivers is not
@@ -107,14 +112,22 @@ def get_enclosed_pocket_mask(
           ),
           None,
       )
-      if not frame:
+      if frame is not None:
+        river = frame.applied_candidate['river']
+        joint_to_side = frame.applied_candidate.get('joint_to_side')
+      elif (
+          preplaced_joint_to_side is not None
+          and river_name in preplaced_joint_to_side
+          and river_name in tracker_with_all_rivers.packed_rivers
+      ):
+        river = tracker_with_all_rivers.packed_rivers[river_name]
+        joint_to_side = dict(preplaced_joint_to_side[river_name])
+      else:
         logging.warning(
             'Could not find boundary river %s in stack to compute mask.',
             river_name,
         )
         return None
-      river = frame.applied_candidate['river']
-      joint_to_side = frame.applied_candidate.get('joint_to_side')
 
     mask, _ = get_pocket_mask_and_cells(
         pocket,

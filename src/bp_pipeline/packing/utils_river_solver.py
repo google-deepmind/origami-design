@@ -42,6 +42,7 @@ from . import types
 from . import utils_backtracking
 from . import utils_pack_river_flaps
 from . import utils_packing_flaps
+from . import utils_packing_svg
 from . import utils_tracker
 from .debug import debug_types
 
@@ -207,6 +208,38 @@ def _get_next_river_start_cell_from_pocket(
   )
 
 
+def _maybe_mirror_pocket_placements(
+    packed_polygons: dict[str, types.PolygonPlacement],
+    tracker: utils_tracker.CreasePatternTracker,
+    template_options: types.TemplateRiverOptions | None,
+) -> dict[str, types.PolygonPlacement]:
+  """Mirrors asymmetric enclosed-pocket placements when configured."""
+  if (
+      template_options is None
+      or not template_options.mirror_pocket_flaps
+      or template_options.full_tree is None
+      or not packed_polygons
+  ):
+    return packed_polygons
+  full_tree = template_options.full_tree
+  with_mirrors = dict(packed_polygons)
+  for f_name, f_pl in packed_polygons.items():
+    if f_name in full_tree:
+      sym_name = full_tree[f_name].symmetric_stick_name
+      if (
+          sym_name
+          and sym_name != f_name
+          and sym_name not in tracker.packed_polygons
+          and sym_name not in with_mirrors
+      ):
+        with_mirrors[sym_name] = (
+            utils_packing_svg.get_mirrored_polygon_placement(
+                f_pl, tracker.grid_size
+            )
+        )
+  return with_mirrors
+
+
 def pack_intermediate_pocket(
     pocket: packing_utils.FlapPocket,
     tree: stick_figure.StickFigure,
@@ -228,6 +261,8 @@ def pack_intermediate_pocket(
         ]
         | None
     ) = None,
+    *,
+    template_options: types.TemplateRiverOptions | None = None,
 ) -> Iterator[tuple[tuple[int, int] | None, dict[str, types.PolygonPlacement]]]:
   """Packs an intermediate pocket and yields solutions.
 
@@ -244,6 +279,8 @@ def pack_intermediate_pocket(
     scoring_config: Configuration for scoring placements.
     base_square_dims_override: If provided, overrides locally computed dims.
     pocket_tiling_cache: Optional cache mapping pocket states to solutions.
+    template_options: Optional explicit options for pre-placed shaping-flap
+      template rivers.
 
   Yields:
     An iterator of tuples, each containing:
@@ -301,6 +338,11 @@ def pack_intermediate_pocket(
     return
   pocket_mask = None
   pocket_river_adj_cells: list[tuple[int, int]] = []
+  preplaced_j2s = (
+      template_options.preplaced_joint_to_side
+      if template_options is not None
+      else None
+  )
   for r_name in packed_boundary_river_names:
     frame = next(
         (
@@ -310,10 +352,18 @@ def pack_intermediate_pocket(
         ),
         None,
     )
-    if not frame:
+    if frame is not None:
+      joint_to_side = frame.applied_candidate.get('joint_to_side')
+      river = frame.applied_candidate['river']
+    elif (
+        preplaced_j2s is not None
+        and r_name in preplaced_j2s
+        and r_name in tracker.packed_rivers
+    ):
+      joint_to_side = dict(preplaced_j2s[r_name])
+      river = tracker.packed_rivers[r_name]
+    else:
       return
-    joint_to_side = frame.applied_candidate.get('joint_to_side')
-    river = frame.applied_candidate['river']
     r_mask, r_adj_cells = utils_pack_river_flaps.get_pocket_mask_and_cells(
         pocket,
         tree[r_name],
@@ -331,6 +381,29 @@ def pack_intermediate_pocket(
 
   if pocket_mask is None:
     return
+
+  if template_options is not None and template_options.reorder_pocket_flaps:
+    boundary_placed = pocket['boundary_rivers'].intersection(
+        tracker.packed_rivers.keys()
+    )
+    if boundary_placed and len(pocket['flap_names']) > 1:
+      b_river = min(boundary_placed)
+      p_indices = [
+          idx
+          for idx, st in enumerate(traversal_plan)
+          if st['stick'].name in pocket['flap_names']
+      ]
+      if len(p_indices) > 1:
+        first_c = traversal_plan[p_indices[0]]['constraints'].get(b_river, {})
+        last_c = traversal_plan[p_indices[-1]]['constraints'].get(b_river, {})
+        if (
+            first_c.get('type') != types.ConstraintType.EQUAL
+            and last_c.get('type') == types.ConstraintType.EQUAL
+        ):
+          traversal_plan = list(traversal_plan)
+          rev_steps = [traversal_plan[idx] for idx in reversed(p_indices)]
+          for idx, rev_st in zip(p_indices, rev_steps, strict=True):
+            traversal_plan[idx] = rev_st
 
   cache_key = None
   if (
@@ -406,7 +479,9 @@ def pack_intermediate_pocket(
     collected_solutions.append(
         (start_cell_for_next_river, copy.deepcopy(packed_polygons))
     )
-    yield start_cell_for_next_river, packed_polygons
+    yield start_cell_for_next_river, _maybe_mirror_pocket_placements(
+        packed_polygons, tracker, template_options
+    )
 
     if config.stretch_intermediate_pocket_flaps and len(packed_polygons) == 1:
       flap_id, placement = next(iter(packed_polygons.items()))
@@ -472,7 +547,9 @@ def pack_intermediate_pocket(
             collected_solutions.append(
                 (stretched_start, copy.deepcopy(stretched_sol))
             )
-            yield stretched_start, stretched_sol
+            yield stretched_start, _maybe_mirror_pocket_placements(
+                stretched_sol, tracker, template_options
+            )
     elif (
         config.stretch_intermediate_pocket_flaps
         and is_symmetric
@@ -984,6 +1061,53 @@ def check_placement_adjacency_constraints(
   return True
 
 
+def _infer_zero_area_hugging_sides(
+    river: river_lib.HuggingRiver,
+    stick: stick_lib.Stick,
+    tracker: utils_tracker.CreasePatternTracker,
+    tree: stick_figure.StickFigure,
+    grid: np.ndarray,
+    hugging_joint: str | None,
+) -> tuple[dict[str, str], dict[str, float]] | None:
+  """Infers hugging river sides from adjacent pre-placed rivers when areas=0."""
+  a1, a2 = river.compute_unoccupied_areas_on_river_sides(grid)
+  side_areas = {'hugging': float(a1), 'opposite': float(a2)}
+  inferred: dict[str, set[str]] = {}
+  for r_name, r_obj in tracker.packed_rivers.items():
+    if r_name not in tree or r_name == stick.name:
+      continue
+    r_stick = tree[r_name]
+    shared = {stick.start, stick.end} & {r_stick.start, r_stick.end}
+    if not shared:
+      continue
+    jn = next(iter(shared))
+    test_occ = grid.copy()
+    for rect in r_obj.rectangles:
+      x0, y0 = int(rect.x_start), int(rect.y_start)
+      xl, yl = int(rect.x_len), int(rect.y_len)
+      test_occ[max(0, y0) : y0 + yl, max(0, x0) : x0 + xl] = False
+    h_after, o_after = river.compute_unoccupied_areas_on_river_sides(test_occ)
+    if h_after > a1 and o_after == a2:
+      inferred.setdefault(jn, set()).add('hugging')
+    elif o_after > a2 and h_after == a1:
+      inferred.setdefault(jn, set()).add('opposite')
+  j_start, j_end = stick.start, stick.end
+  for s_start, s_end in (('hugging', 'opposite'), ('opposite', 'hugging')):
+    cand_map = {j_start: s_start, j_end: s_end}
+    if (
+        hugging_joint is not None
+        and cand_map.get(hugging_joint) != 'hugging'
+    ):
+      continue
+    if inferred and all(
+        cand_map[jn] in sides
+        for jn, sides in inferred.items()
+        if jn in cand_map
+    ):
+      return cand_map, side_areas
+  return None
+
+
 def _assign_river_sides(
     river: types.RiverPlacementAlias,
     step: types.TraversalStep,
@@ -992,6 +1116,8 @@ def _assign_river_sides(
     debug: debug_types.DebugConfig,
     hugging_joint: str | None = None,
     occupancy_grid: np.ndarray | None = None,
+    *,
+    infer_zero_area_hugging_sides: bool = False,
 ) -> tuple[dict[str, str], dict[str, float]] | None:
   """Assigns river sides to joints and returns side assignment and areas.
 
@@ -1004,6 +1130,8 @@ def _assign_river_sides(
     hugging_joint: If river is hugging, the joint on the hugging side.
     occupancy_grid: Occupancy grid to use for area computation. If None,
       tracker.occupancy_grid is used.
+    infer_zero_area_hugging_sides: If True, infers hugging river sides from
+      adjacent pre-placed rivers when remaining branch area requirements are 0.
 
   Returns:
     The selected joint-to-side assignment if valid, otherwise None.
@@ -1052,6 +1180,14 @@ def _assign_river_sides(
       )
       if hugging_ok and opposite_ok:
         return joint_to_side, side_areas  # pyrefly: ignore[bad-return]
+      elif (
+          infer_zero_area_hugging_sides
+          and area_sides_reqs
+          and all(v == 0 for v in area_sides_reqs.values())
+      ):
+        return _infer_zero_area_hugging_sides(
+            river, stick, tracker, tree, grid, hugging_joint
+        )
       else:
         return None
     else:
@@ -1074,6 +1210,17 @@ def _assign_river_sides(
   )
 
   if joint_to_side is None:
+    if (
+        infer_zero_area_hugging_sides
+        and isinstance(river, river_lib.HuggingRiver)
+        and area_sides_reqs
+        and all(v == 0 for v in area_sides_reqs.values())
+    ):
+      inferred = _infer_zero_area_hugging_sides(
+          river, stick, tracker, tree, grid, hugging_joint
+      )
+      if inferred is not None:
+        return inferred
     if debug.save_history or debug.live_plot:
       river_cand_for_debug: types.RiverCandidate = {
           'stick_name': stick.name,
@@ -1604,6 +1751,8 @@ def find_river_candidates(
     hugging_joint: str | None = None,
     config: config_lib.PackingConfig = config_lib.PackingConfig(),
     base_square_dims_override: dict[str, tuple[int, int]] | None = None,
+    *,
+    template_options: types.TemplateRiverOptions | None = None,
 ) -> Iterator[types.RiverCandidate]:
   """Generates and validates river candidates for a given traversal step.
 
@@ -1626,6 +1775,8 @@ def find_river_candidates(
     hugging_joint: If river is hugging, the joint on the hugging side.
     config: Configuration object that holds solver parameters.
     base_square_dims_override: If provided, overrides locally computed dims.
+    template_options: Optional explicit options for pre-placed shaping-flap
+      template rivers.
 
   Yields:
     Valid RiverCandidate dictionaries.
@@ -1633,6 +1784,35 @@ def find_river_candidates(
   stick = step['stick']
   if not stick.is_river:
     return
+  if template_options is not None and step.get('area_sides'):
+    refreshed_plan = utils_tree.compute_constraints_along_traversal(
+        tree,
+        config=config,
+        tracker=tracker,
+        pockets_info=pockets_info,
+    )
+    placed_all = set(tracker.packed_polygons) | set(tracker.packed_rivers)
+    step = copy.deepcopy(step)
+    for r_step in refreshed_plan:
+      if r_step['stick'].name == stick.name:
+        step['area_sides'] = dict(r_step['area_sides'])
+        break
+    for side_joint in list(step['area_sides']):
+      visited = {stick.name}
+      frontier = [side_joint]
+      unplaced_on_branch = False
+      while frontier and not unplaced_on_branch:
+        jn = frontier.pop()
+        for b_stick in tree.joints[jn].sticks:
+          if b_stick.name in visited:
+            continue
+          visited.add(b_stick.name)
+          if b_stick.name not in placed_all:
+            unplaced_on_branch = True
+            break
+          frontier.append(b_stick.other_joint_name(jn))
+      if not unplaced_on_branch:
+        step['area_sides'][side_joint] = 0.0
   river_width = int(stick.length)
   placements: list[types.RiverPlacementAlias] = []
 
@@ -1672,6 +1852,9 @@ def find_river_candidates(
             hug_boundaries=hug_boundaries,
             area_reqs=step['area_sides'],
             allow_off_grid=config.easy_mode,
+            retry_opposite_hug_side=bool(
+                template_options and template_options.retry_opposite_hug_side
+            ),
         )
     )
     if config.reject_degenerate_hugging_rivers:
@@ -1778,6 +1961,7 @@ def find_river_candidates(
           )
       ]
 
+  yielded_any = False
   for river in placements:
     timeout.maybe_timeout_cooperatively()
     area_reqs = tuple(step['area_sides'].values())
@@ -1814,6 +1998,9 @@ def find_river_candidates(
         debug,
         hugging_joint,
         occupancy_grid=grid_for_area_computation,
+        infer_zero_area_hugging_sides=bool(
+            template_options and template_options.infer_zero_area_hugging_sides
+        ),
     )
     if assignment is None:
       continue
@@ -1849,7 +2036,32 @@ def find_river_candidates(
         river_cand['joint_to_side'] = joint_to_side
       if sf_pair:
         river_cand['level_shifter_placements'] = sf_pair
+      yielded_any = True
       yield river_cand
+  if (
+      not yielded_any
+      and pocket_start_cell is not None
+      and template_options is not None
+      and template_options.retry_without_pocket_start_cell
+  ):
+    yield from find_river_candidates(
+        step,
+        grid_size,
+        tracker,
+        tree,
+        pockets_info,
+        traversal_plan,
+        debug,
+        fast_packing_debug,
+        is_symmetric,
+        symmetry_axes,
+        scoring_config,
+        None,
+        None,
+        config,
+        base_square_dims_override=base_square_dims_override,
+        template_options=template_options,
+    )
 
 
 def process_solution_and_backtrack(
@@ -1930,6 +2142,7 @@ def iter_solve_rivers_iteratively(
     accept_fn: (
         Callable[[utils_tracker.CreasePatternTracker], bool] | None
     ) = None,
+    template_options: types.TemplateRiverOptions | None = None,
 ) -> Generator[utils_tracker.CreasePatternTracker, bool | None, None]:
   """Lazily yields river and enclosed-pocket trackers using backtracking.
 
@@ -1957,6 +2170,8 @@ def iter_solve_rivers_iteratively(
     base_square_dims_override: Optional override for base square dimensions.
     accept_fn: Optional predicate returning True when a yielded tracker is
       accepted by downstream pocket packing.
+    template_options: Optional explicit options for pre-placed shaping-flap
+      template rivers.
 
   Yields:
     Candidate `CreasePatternTracker` instances with rivers and enclosed pockets
@@ -2115,6 +2330,7 @@ def iter_solve_rivers_iteratively(
               scoring_config=scoring_config,
               base_square_dims_override=base_square_dims_override,
               pocket_tiling_cache=pocket_tiling_cache,
+              template_options=template_options,
           )
           is_star_hub = getattr(config, 'star_hub_rivers', False)
           if is_star_hub:
@@ -2174,6 +2390,7 @@ def iter_solve_rivers_iteratively(
                 p_hugging_joint,
                 config,
                 base_square_dims_override=base_square_dims_override,
+                template_options=template_options,
             )
             if is_star_hub:
               pocket_fully_enclosed = pocket['boundary_rivers'].issubset(
@@ -2230,6 +2447,11 @@ def iter_solve_rivers_iteratively(
                     tree,
                     stack,
                     river_cand,
+                    preplaced_joint_to_side=(
+                        template_options.preplaced_joint_to_side
+                        if template_options is not None
+                        else None
+                    ),
                 )
 
                 if enclosed_mask is None:
@@ -2318,6 +2540,7 @@ def iter_solve_rivers_iteratively(
             hugging_joint,
             config,
             base_square_dims_override=base_square_dims_override,
+            template_options=template_options,
         )
 
       if utils_backtracking.try_to_advance(
@@ -2387,6 +2610,7 @@ def solve_rivers_iteratively(
     pockets_info: list[packing_utils.FlapPocket] | None = None,
     default_traversal_plan: list[types.TraversalStep] | None = None,
     base_square_dims_override: dict[str, tuple[int, int]] | None = None,
+    template_options: types.TemplateRiverOptions | None = None,
 ) -> list[utils_tracker.CreasePatternTracker]:
   """Packs adjacent rivers and enclosed flaps using iterative backtracking."""
   solutions: list[utils_tracker.CreasePatternTracker] = []
@@ -2406,6 +2630,7 @@ def solve_rivers_iteratively(
         pockets_info=pockets_info,
         default_traversal_plan=default_traversal_plan,
         base_square_dims_override=base_square_dims_override,
+        template_options=template_options,
     ):
       solutions.append(tracker_sol)
   except timeout.CooperativeTimeoutError:

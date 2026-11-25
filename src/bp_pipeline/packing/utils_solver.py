@@ -29,12 +29,12 @@ from . import compute_ridges
 from . import config as config_lib
 from . import packing_output
 from . import scoring
+from . import shaping_flap_templates
 from . import tiling_solver
 from . import types
 from . import utils_packing_flaps
 from . import utils_packing_svg
 from . import utils_river_solver
-from . import utils_shaping_flap_solver
 from . import utils_tracker
 from .debug import debug_types
 
@@ -523,32 +523,36 @@ def find_tiling_and_generate_crease_pattern(
       name for name, dims in base_square_dims.items() if dims[0] != dims[1]
   } or None
 
-  # Try shaping heuristic first if applicable
+  # Pack shaping-flap templates when applicable.
   shaping_solutions_result = None
   has_shaping_flaps = any(
-      stick.shaping_flap for stick in stick_figure_to_pack.children
+      stick.shaping_flap for stick in tree.children
   )
-  if has_shaping_flaps and not config.easy_mode:
-    logging.info('Shaping flaps found, trying shaping heuristic solver.')
+  if has_shaping_flaps:
+    if config.easy_mode:
+      raise ValueError(
+          'Shaping-flap templates do not support easy_mode=True.'
+      )
+    logging.info('Shaping flaps found, running composable template solver.')
     shaping_solutions_result = (
-        utils_shaping_flap_solver.solve_with_shaping_heuristic(
+        shaping_flap_templates.solve_trackers_with_shaping_templates(
+            tree,
             stick_figure_to_pack,
             grid_size=grid_size,
             is_symmetric=is_symmetric,
             symmetry_axes=symmetry_axes,
+            pockets_info=pockets_info,
+            default_traversal_plan=default_traversal_plan,
             debug=debug,
             scoring_config=scoring_config,
             max_solutions=max_solutions,
             config=config,
         )
     )
-    if shaping_solutions_result is not None:
-      logging.info(
-          'Shaping heuristic solver finished: %s.',
-          'success' if shaping_solutions_result else 'failure',
-      )
-    else:
-      logging.info('Shaping heuristic solver did not apply, falling back.')
+    logging.info(
+        'Shaping template solver finished: %s.',
+        'success' if shaping_solutions_result else 'failure',
+    )
 
   has_rivers = any(stick.is_river for stick in stick_figure_to_pack.children)
   if shaping_solutions_result is not None or has_rivers:
@@ -721,6 +725,31 @@ def find_tiling_and_generate_crease_pattern(
 
     if valid_tiling_count > 0:
       return outputs
+    if source == 'Shaping':
+      template_desc = shaping_flap_templates.describe_shaping_templates(tree)
+      reason = (
+          f'Shaping-flap template packing failed for {template_desc} at'
+          f' grid_size={grid_size}.'
+      )
+      details = debug_types.TilingDetails(
+          grid_size=grid_size,
+          is_symmetric=is_symmetric,
+          perfect_tiling_found=False,
+          unused_area=(
+              best_unused_area if best_unused_area is not None else -1
+          ),
+          reason=reason,
+      )
+      if debug.save_history:
+        details['debug_history'] = debug.history
+      return [
+          packing_output.PackingOutput.from_error(
+              error_message=reason,
+              details=details,
+              tracker=None,
+              config=config,
+          )
+      ]
     if best_error_output is not None:
       return [best_error_output]
     if config.start_with_hugging_river:

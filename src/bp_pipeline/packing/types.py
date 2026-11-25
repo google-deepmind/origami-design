@@ -15,6 +15,7 @@
 
 """Defines shared data structures and types for the packing solver."""
 
+from collections.abc import Mapping
 import dataclasses
 import enum
 from typing import Any, Iterator, Literal, NewType, NotRequired, TypeAlias, TypeVar, TypedDict, Union
@@ -547,3 +548,37 @@ class FoldGraphDataDict(TypedDict):
   file_description: NotRequired[str]
   edge_lengths: NotRequired[list[float | None]]
   vertices_angles: NotRequired[dict[str, list[AngleInfo]]]
+
+
+@dataclasses.dataclass(frozen=True)
+class TemplateRiverOptions:
+  """Explicit river-solver options for pre-placed shaping-flap templates.
+
+  Attributes:
+    preplaced_joint_to_side: Joint-to-side assignments for rivers already placed
+      on `initial_tracker` before iterative river solving begins.
+    full_tree: Full symmetric stick figure used to mirror enclosed pocket
+      placements across the symmetry axis when `mirror_pocket_flaps` is True.
+    mirror_pocket_flaps: Whether `pack_intermediate_pocket` mirrors newly packed
+      asymmetric pocket flaps across the symmetry axis.
+    infer_zero_area_hugging_sides: Whether `_assign_river_sides` infers hugging
+      river side assignments from adjacent pre-placed rivers when all remaining
+      branch area requirements are zero.
+    retry_opposite_hug_side: Whether `generate_hugging_river_candidates` retries
+      with the opposite hug side when the primary hug side yields no candidates.
+    retry_without_pocket_start_cell: Whether `find_river_candidates` retries
+      without `pocket_start_cell` when constrained hugging yields no candidates.
+    reorder_pocket_flaps: Whether `pack_intermediate_pocket` reverses a pocket's
+      flap traversal order when its last flap has an `EQUAL` constraint to a
+      pre-placed boundary river and its first flap does not.
+  """
+
+  preplaced_joint_to_side: Mapping[str, Mapping[str, str]] = dataclasses.field(
+      default_factory=dict
+  )
+  full_tree: Any = None
+  mirror_pocket_flaps: bool = False
+  infer_zero_area_hugging_sides: bool = False
+  retry_opposite_hug_side: bool = False
+  retry_without_pocket_start_cell: bool = False
+  reorder_pocket_flaps: bool = False

@@ -49,8 +49,16 @@ models:
     -   Ensure strict bilateral symmetry across the YZ plane (`+θ` vs `-θ`
         azimuth, identical `elevation_angle`, `length`, and `width`, and uniform
         width parity `width % 2` across all symmetry-axis sticks).
-    -   Set `"shaping_flap": false` on all sticks and save to e.g.
-        `outputs/candidate.json`.
+    -   Set `"shaping_flap": false` on regular anatomical sticks, or set
+        `"shaping_flap": true` on auxiliary pocket blades belonging to a valid
+        `TailTemplate` (alternating `SF - River - SF - ...` chain, or central
+        `tip_flap` + `SF` + `River` along the symmetry axis) or `KneeTemplate`
+        (degree-3 joint with 1 `shaping_flap` leaf, 1 normal leaf flap, and 1
+        proximal river). Shaping-flap templates are realized by the `'builtin'`
+        packer only (`easy_mode=True` is not available for figures with shaping
+        flaps), and are limited to at most 2 tails (`bottom` and `top`
+        symmetry-axis edges) and corner knees (at most 4 total, or 2 mirrored
+        pairs when symmetric). Save to e.g. `outputs/candidate.json`.
 
 3.  **Validate, Render, Pack, Solve & Shape (`bp-pipeline` CLI)**:
     -   Run the installed `bp-pipeline` package CLI (or `.venv/bin/bp-pipeline`

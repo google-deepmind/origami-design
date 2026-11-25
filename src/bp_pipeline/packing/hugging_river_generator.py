@@ -414,6 +414,8 @@ def generate_hugging_river_candidates(
     hug_boundaries: bool = False,
     area_reqs: dict[str, float] | None = None,
     allow_off_grid: bool = False,
+    *,
+    retry_opposite_hug_side: bool = False,
 ) -> Iterator[river_lib.HuggingRiver]:
   """Generates hugging river candidates including path variants.
 
@@ -443,6 +445,8 @@ def generate_hugging_river_candidates(
     allow_off_grid: If True, allows the river to temporarily go outside the grid
       boundaries. This is useful for "easy mode" packing where rivers might need
       to wrap around corners outside the current bounds.
+    retry_opposite_hug_side: If True, retries candidate generation with the
+      opposite hug side when `hug_side` yields no candidates.
 
   Yields:
     HuggingRiver objects representing path candidates.
@@ -519,7 +523,26 @@ def generate_hugging_river_candidates(
           initial_direction=direction,
       )
       if river is not None:
+        candidate_count += 1
         yield river
+
+  if candidate_count == 0 and retry_opposite_hug_side:
+    alt_side = (
+        river_lib.HugSide.RIGHT
+        if hug_side == river_lib.HugSide.LEFT
+        else river_lib.HugSide.LEFT
+    )
+    yield from generate_hugging_river_candidates(
+        grid_size,
+        width,
+        occupancy_grid,
+        start_cell,
+        alt_side,
+        hug_boundaries=hug_boundaries,
+        area_reqs=area_reqs,
+        allow_off_grid=allow_off_grid,
+        retry_opposite_hug_side=False,
+    )
 
 
 def _find_next_border_start_ccw(

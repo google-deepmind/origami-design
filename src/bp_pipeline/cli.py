@@ -270,10 +270,15 @@ def run_pipeline(
       'artifacts': {},
   }
 
+  has_shaping_flaps = any(
+      bool(c.get('shaping_flap'))
+      for c in data.get('children', ())
+      if isinstance(c, Mapping)
+  )
   errors = graph_checks.prevalidate(
       data,
       check_symmetry=check_symmetry,
-      use_shaping_flaps=False,
+      use_shaping_flaps=has_shaping_flaps,
   )
   report['validation_errors'] = errors
   if errors:

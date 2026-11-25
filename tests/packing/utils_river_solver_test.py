@@ -358,6 +358,7 @@ class FindRiverCandidatesTest(absltest.TestCase):
         hug_boundaries=False,
         area_reqs=step['area_sides'],
         allow_off_grid=False,
+        retry_opposite_hug_side=False,
     )
 
   def test_find_river_candidates_validation_error_records_step(self):
