@@ -18,6 +18,10 @@
 from absl.testing import absltest
 import bp_pipeline as bp
 from bp_pipeline import folder_3d as fold_3d
+from bp_pipeline import render_3d
+from bp_pipeline.crease_pattern import crease as crease_lib
+from bp_pipeline.crease_pattern import crease_pattern as cp_lib
+from bp_pipeline.crease_pattern import point as point_lib
 import fold_checks
 import numpy as np
 
@@ -71,12 +75,25 @@ class MeshToFoldDictTest(absltest.TestCase):
 
   def test_shaping_marks_folded_creases_that_the_solved_base_lacks(self):
     shaping = np.asarray(self.fold['edges_bp:shaping'])
+    base_angles = np.asarray(self.fold['edges_bp:baseFoldAngle'])
     assignments = np.asarray(self.fold['edges_assignment'])
     solved = bp.build_folded_mesh_3d(self.result.solved).to_fold_dict('cat')
 
     self.assertLen(shaping, len(assignments))
+    self.assertLen(base_angles, len(assignments))
     self.assertTrue(np.isin(assignments[shaping], ['M', 'V']).all())
     self.assertTrue(shaping.any())
+    self.assertTrue(np.all(base_angles[shaping] == 0.0))
+    self.assertTrue(np.isin(base_angles, [-180.0, 0.0, 180.0]).all())
+    self.assertTrue(np.any(base_angles == -180.0))
+    self.assertTrue(np.any(base_angles == 180.0))
+    self.assertTrue(np.all(base_angles[assignments == 'B'] == 0.0))
+    # Unchanged base creases keep their solved mountain (-180) or valley (+180)
+    # sign.
+    kept_m = ~shaping & (assignments == 'M') & (base_angles != 0.0)
+    kept_v = ~shaping & (assignments == 'V') & (base_angles != 0.0)
+    self.assertGreater(np.mean(base_angles[kept_m] == -180.0), 0.8)
+    self.assertGreater(np.mean(base_angles[kept_v] == 180.0), 0.8)
     # The creases kept from the base lie on creases of the base, so together
     # they cannot be longer.
     folded_creases = np.isin(assignments, ['M', 'V'])
@@ -86,6 +103,7 @@ class MeshToFoldDictTest(absltest.TestCase):
         + 1e-6,
     )
     self.assertNotIn('edges_bp:shaping', solved)
+    self.assertNotIn('edges_bp:baseFoldAngle', solved)
 
   def test_mesh_of_a_bare_crease_pattern_has_no_pipeline_properties(self):
     mesh = bp.build_folded_mesh_3d(self.result.shaped.creases)
@@ -111,6 +129,46 @@ class MeshToFoldDictTest(absltest.TestCase):
     rot = u @ vt
     self.assertAlmostEqual(float(np.linalg.det(rot)), 1.0, places=5)
     np.testing.assert_allclose(src @ rot, dst, atol=2e-5)
+
+  def test_base_fold_angle_preserves_solved_sign_across_flipped_shaping_crease(
+      self,
+  ):
+    base_cp = cp_lib.CreasePattern([
+        crease_lib.Crease(
+            point_lib.Point(x=0.25, y=0.0),
+            point_lib.Point(x=0.25, y=1.0),
+            fold=crease_lib.Fold.MOUNTAIN,
+        ),
+        crease_lib.Crease(
+            point_lib.Point(x=0.5, y=0.0),
+            point_lib.Point(x=0.5, y=1.0),
+            fold=crease_lib.Fold.VALLEY,
+        ),
+        crease_lib.Crease(
+            point_lib.Point(x=0.0, y=0.0),
+            point_lib.Point(x=1.0, y=0.0),
+            fold=crease_lib.Fold.BORDER,
+        ),
+    ])
+    verts_2d = (
+        (-0.25, -0.5),
+        (-0.25, 0.5),
+        (0.0, -0.5),
+        (0.0, 0.5),
+        (0.25, -0.5),
+        (0.25, 0.5),
+        (-0.5, -0.5),
+        (0.5, -0.5),
+    )
+    edges = ((0, 1), (2, 3), (4, 5), (0, 1), (4, 4))
+    # Edge 0 was a base mountain (-180) flipped to 'V' in shaping; edge 1 is a
+    # base valley (+180); edge 2 is a shaping-added 'M'; edge 3 is a border 'B'
+    # segment; edge 4 is a zero-length 'M' edge.
+    added, base_angles = render_3d._classify_base_edges(  # pylint: disable=protected-access
+        verts_2d, edges, ('V', 'V', 'M', 'B', 'M'), base_cp
+    )
+    self.assertEqual(added, (False, False, True, False, False))
+    self.assertEqual(base_angles, (-180.0, 180.0, 0.0, 0.0, 0.0))
 
 
 def _total_length(fold, edge_mask):

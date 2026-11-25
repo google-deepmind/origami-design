@@ -81,6 +81,11 @@ class FoldedMesh3D:
     edges_shaping: Per edge, whether shaping added the crease instead of
       inheriting it from the solved base. Empty unless the mesh is built from a
       `ShapedCreasePattern` (or `PipelineResult` with `.shaped`).
+    edges_base_fold_angle: Per edge, signed fold angle in degrees in the solved
+      flat-foldable base (`-180.0`, `0.0`, or `180.0`), preserving original
+      base signs and magnitudes when shaping bends or flips a base crease.
+      Empty unless built from a `ShapedCreasePattern` (or `PipelineResult` with
+      `.shaped`).
   """
 
   vertices_2d: list[tuple[float, float]]
@@ -94,6 +99,7 @@ class FoldedMesh3D:
   regions: tuple[MeshRegion, ...] = ()
   faces_region: tuple[int | None, ...] = ()
   edges_shaping: tuple[bool, ...] = ()
+  edges_base_fold_angle: tuple[float, ...] = ()
 
   def to_fold_dict(self, title: str = 'model') -> dict[str, Any]:
     """Serializes this mesh to a FOLD dictionary; see `mesh_to_fold_dict`."""
@@ -511,35 +517,48 @@ def _face_regions(
   return tuple(regions), tuple(faces_region)
 
 
-def _edges_added_by_shaping(
+def _classify_base_edges(
     vertices_2d: Sequence[tuple[float, float]],
     edges: Sequence[tuple[int, int]],
     edges_assignment: Sequence[str],
     base: cp_lib.CreasePattern,
-) -> tuple[bool, ...]:
-  """Flags the folded edges that lie on no folded crease of `base`."""
-  base_folds = crease_lib.CreaseBBoxIndex()
+) -> tuple[tuple[bool, ...], tuple[float, ...]]:
+  """Flags shaping-added edges and extracts signed solved-base fold angles."""
+  base_mountains = crease_lib.CreaseBBoxIndex()
+  base_valleys = crease_lib.CreaseBBoxIndex()
   for crease_line in base.creases:
     assignment, _ = fold_3d.crease_assignment_and_angle(
         crease_line.fold, crease_line.fold_percent
     )
-    if assignment in ('M', 'V'):
-      base_folds.add(crease_line)
+    if assignment == 'M':
+      base_mountains.add(crease_line)
+    elif assignment == 'V':
+      base_valleys.add(crease_line)
 
   def paper_point(vertex: int) -> point_lib.Point:
     x, y = vertices_2d[vertex]
     return point_lib.Point(x=x + 0.5, y=y + 0.5)
 
   added: list[bool] = []
+  base_angles: list[float] = []
   for (v1, v2), assignment in zip(edges, edges_assignment, strict=True):
     p1, p2 = paper_point(v1), paper_point(v2)
-    if assignment not in ('M', 'V') or p1.isclose(p2):
+    if assignment == 'B' or p1.isclose(p2):
       added.append(False)
+      base_angles.append(0.0)
       continue
     # Only the geometry of the query crease matters, not its fold type.
     edge_line = crease_lib.Crease(p1, p2, fold=crease_lib.Fold.MOUNTAIN)
-    added.append(not base_folds.any_overlapping(edge_line))
-  return tuple(added)
+    if base_mountains.any_overlapping(edge_line):
+      base_angles.append(-180.0)
+      added.append(False)
+    elif base_valleys.any_overlapping(edge_line):
+      base_angles.append(180.0)
+      added.append(False)
+    else:
+      base_angles.append(0.0)
+      added.append(assignment in ('M', 'V'))
+  return tuple(added), tuple(base_angles)
 
 
 def build_folded_mesh_3d(
@@ -622,8 +641,9 @@ def build_folded_mesh_3d(
     grid_size = resolved_packed.grid_size
     regions, faces_region = _face_regions(vertices_2d, faces, resolved_packed)
   edges_shaping: tuple[bool, ...] = ()
+  edges_base_fold_angle: tuple[float, ...] = ()
   if base_solved_cp is not None:
-    edges_shaping = _edges_added_by_shaping(
+    edges_shaping, edges_base_fold_angle = _classify_base_edges(
         vertices_2d, edges, edges_assignment, base_solved_cp
     )
 
@@ -639,6 +659,7 @@ def build_folded_mesh_3d(
       regions=regions,
       faces_region=faces_region,
       edges_shaping=edges_shaping,
+      edges_base_fold_angle=edges_base_fold_angle,
   )
 
 
@@ -682,6 +703,11 @@ def mesh_to_fold_dict(mesh: FoldedMesh3D, title: str) -> dict[str, Any]:
       for mountain/valley edges added by shaping (not overlapping any folded
       crease of `solved.creases`). Present when built from a
       `ShapedCreasePattern` (`mesh.edges_shaping` non-empty).
+    - `edges_bp:baseFoldAngle` (`list[float]`): parallel to `edges_vertices`;
+      signed fold angle in degrees (`-180.0`, `0.0`, or `180.0`) of each edge in
+      `solved.creases`, preserving original base orientations when shaping bends
+      or flips a base crease. Present when built from a `ShapedCreasePattern`
+      (`mesh.edges_base_fold_angle` non-empty).
 
   Args:
     mesh: The folded mesh to serialize.
@@ -726,6 +752,10 @@ def mesh_to_fold_dict(mesh: FoldedMesh3D, title: str) -> dict[str, Any]:
     fold['faces_bp:region'] = list(mesh.faces_region)
   if mesh.edges_shaping:
     fold['edges_bp:shaping'] = list(mesh.edges_shaping)
+  if mesh.edges_base_fold_angle:
+    fold['edges_bp:baseFoldAngle'] = [
+        round(a, 4) for a in mesh.edges_base_fold_angle
+    ]
   return fold
 
 
