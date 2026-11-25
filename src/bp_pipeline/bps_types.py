@@ -15,7 +15,7 @@
 
 """TypedDict schema definitions for Box Pleating Studio (`.bps.json`) files."""
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 
 class SheetDict(TypedDict):
@@ -36,12 +36,23 @@ class FlapDict(TypedDict):
   height: int
 
 
+class ReservationDict(TypedDict):
+  """Defines a reserved grid rectangle in the layout."""
+
+  id: str
+  x: int
+  y: int
+  width: int
+  height: int
+
+
 class LayoutDict(TypedDict):
   """Defines the layout containing the sheet and its flaps."""
 
   sheet: SheetDict
   flaps: list[FlapDict]
   stretches: list[Any]
+  reservations: NotRequired[list[ReservationDict]]
 
 
 class NodeDict(TypedDict):

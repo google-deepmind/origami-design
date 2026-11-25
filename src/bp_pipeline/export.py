@@ -360,6 +360,10 @@ def to_bp_studio(
 ) -> bps_types.BoxPleatingTreeData:
   """Exports a design or packed/solved result to `BoxPleatingTreeData` schema.
 
+  Note that the `.bps` format stores reserved grid cells (`reservations`)
+  without stick-specific `level_shift_reservations`; use `bp.dumps` / `bp.loads`
+  to round-trip level-shifter reservations.
+
   Args:
     obj: A `StickFigure`, `DesignTree`, `PackedCreasePattern`,
       `SolvedCreasePattern`, or `PipelineResult`.
@@ -494,6 +498,17 @@ def to_bp_studio(
           },
       },
   }
+  if packed is not None and packed.reservations:
+    bps_dict['design']['layout']['reservations'] = [
+        bps_types.ReservationDict(
+            id=r.id,
+            x=int(r.rect.x * scale_factor),
+            y=int(r.rect.y * scale_factor),
+            width=int(r.rect.width * scale_factor),
+            height=int(r.rect.height * scale_factor),
+        )
+        for r in packed.reservations
+    ]
   return bps_dict
 
 
@@ -567,6 +582,7 @@ def validate_packing(
     grid_size: int,
     flaps: Sequence[bps_types.FlapDict | Mapping[str, Any]],
     stretches: Sequence[Mapping[str, Any]] = (),
+    reservations: Sequence[bps_types.ReservationDict | Mapping[str, Any]] = (),
 ) -> tuple[
     bus.PackedCreasePattern | None, tuple[str, ...], hinges.SolverConfig | None
 ]:
@@ -861,6 +877,45 @@ def validate_packing(
             grid_size=grid_size,
         )
 
+  parsed_reservations: list[bus.ReservedRegion] = []
+  for idx, res in enumerate(reservations):
+    res_id = str(res.get('id') or f'{packing_types.AXIS_FILLER_PREFIX}_{idx}')
+    rx, ry, rw, rh = (int(res.get(k, 0)) for k in ('x', 'y', 'width', 'height'))
+    if min(rx, ry) < 0 or min(rw, rh) <= 0 or max(rx + rw, ry + rh) > grid_size:
+      errors.append(
+          f"Reservation '{res_id}' rect [{rx}..{rx+rw}, {ry}..{ry+rh}] is"
+          f' invalid or exceeds sheet bounds [0..{grid_size}, 0..{grid_size}].'
+      )
+      continue
+    grid_rect = bus.GridRect(x=rx, y=ry, width=rw, height=rh)
+    if not utils_packing_flaps.is_unoccupied(
+        tracker.occupancy_grid, grid_rect.to_rectangle(name=res_id)
+    ):
+      overlappers = sorted({
+          s.source_id
+          for s in tracker.grid[ry : ry + rh, rx : rx + rw].ravel()
+          if s.source_id
+      })
+      errors.append(
+          f"Reservation '{res_id}' overlaps with"
+          f" {', '.join(repr(o) for o in overlappers)} at [{rx}..{rx+rw},"
+          f' {ry}..{ry+rh}].'
+      )
+      continue
+    center_pt = point_lib.Point(
+        x=(rx + rw / 2.0) / grid_size,
+        y=(ry + rh / 2.0) / grid_size,
+        require_on_paper=False,
+    )
+    # Register as an axis-filler polygon so occupancy and hinge extraction treat
+    # the strip as covered; `.bps` ridge synthesis currently assumes even-width
+    # axis-filler geometry (odd minor dimensions yield half-grid ridge centers).
+    tracker.add_polygon(
+        f'{packing_types.AXIS_FILLER_PREFIX}_{idx}',
+        packing_types.PolygonPlacement((rx, ry), (rw, rh), center_pt),
+    )
+    parsed_reservations.append(bus.ReservedRegion(id=res_id, rect=grid_rect))
+
   if errors:
     return None, tuple(errors), None
 
@@ -923,6 +978,10 @@ def validate_packing(
     packed_cp = bus.PackedCreasePattern.from_packing_output(
         p_output, design=design, grid_size=grid_size
     )
+    if parsed_reservations:
+      packed_cp = dataclasses.replace(
+          packed_cp, reservations=tuple(parsed_reservations)
+      )
     return packed_cp, (), bank_res.first_passing_config
   except (
       ValueError,
@@ -953,6 +1012,7 @@ def import_bps(
   layout = design_dict.get('layout') or {}
   flaps = layout.get('flaps') or []
   stretches = layout.get('stretches') or []
+  reservations = layout.get('reservations') or []
 
   if mode == 'tree' or not flaps:
     return BpsImportResult(
@@ -1000,6 +1060,19 @@ def import_bps(
                 f"Stretch '{st_id}' rect coordinate '{k}'={val} is not"
                 f' divisible by scale_factor {scale_factor}.'
             )
+    scaled_reservations = []
+    for i, res in enumerate(reservations):
+      res_id = str(res.get('id') or f'{packing_types.AXIS_FILLER_PREFIX}_{i}')
+      coords = {k: int(res.get(k, 0)) for k in ('x', 'y', 'width', 'height')}
+      for k, val in coords.items():
+        if val % scale_factor != 0:
+          scale_errors.append(
+              f"Reservation '{res_id}' coordinate '{k}'={val} is not"
+              f' divisible by scale_factor {scale_factor}.'
+          )
+      scaled_reservations.append(
+          {'id': res_id, **{k: v // scale_factor for k, v in coords.items()}}
+      )
     if scale_errors:
       return BpsImportResult(
           design=design,
@@ -1038,12 +1111,14 @@ def import_bps(
           'rects': s_rects,
       })
     stretches = scaled_stretches
+    reservations = scaled_reservations
 
   packed_cp, errors, first_passing_config = validate_packing(
       design,
       grid_size=grid_size,
       flaps=flaps,
       stretches=stretches,
+      reservations=reservations,
   )
   return BpsImportResult(
       design=design,

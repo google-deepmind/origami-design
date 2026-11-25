@@ -69,12 +69,42 @@ BlockedGridCellState = GridCellState(
 # pylint: enable=invalid-name
 
 
+def level_shifter_pocket_depth(width: int) -> int:
+  """Returns sacrificial pocket depth in grid cells (`0` when `width <= 1`).
+
+  Args:
+    width: Target integer flap or river width.
+
+  Returns:
+    Required sacrificial pocket depth (`2 * (width - 1)` for `width == 2`).
+
+  Raises:
+    ValueError: If `width > 2` (sacrificial pockets support `width == 2`).
+  """
+  w = int(width)
+  if w <= 1:
+    return 0
+  if w != 2:
+    raise ValueError(
+        'Sacrificial-pocket level shifters currently support width == 2,'
+        f' got width={width}.'
+    )
+  return 2 * (w - 1)
+
+
+def level_shifter_center_margin(width: int) -> int:
+  """Returns the minimum center-to-border margin (`pocket_depth // 2`)."""
+  return level_shifter_pocket_depth(width) // 2
+
+
 def get_flap_dim(
     stick: stick_lib.Stick, use_level_shifter: bool = False
 ) -> int:
-  """Calculates flap dimension based on stick length (`2 * stick.length`)."""
-  del use_level_shifter
-  return stick.length * 2
+  """Calculates flap dimension based on stick length and level shifter."""
+  dim = stick.length * 2
+  if use_level_shifter and stick.requires_level_shifter:
+    dim += level_shifter_pocket_depth(round(stick.width))
+  return dim
 
 
 def set_grid_occupation(

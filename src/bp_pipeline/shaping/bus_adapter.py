@@ -24,9 +24,10 @@ from typing import Any
 from .. import bus
 from .. import rectangle as rectangle_lib
 from ..crease_pattern import crease
-from ..crease_pattern import point
 from ..packing import compute_ridges
+from ..packing import level_shifter as packing_ls
 from ..packing import packing_output as packing_output_lib
+from ..packing import types as packing_types
 from ..packing import utils_packing_svg
 from ..solving import central_fold_utils
 from ..solving import hinges as hinge_utils
@@ -39,47 +40,7 @@ def unclipped_flap_rectangle(
     grid_size: int | None = None,
 ) -> rectangle_lib.Rectangle:
   """Reconstructs unclipped packing Rectangle around `flap.circle_centers`."""
-  centers = [
-      point.Point(x=float(c.x), y=float(c.y), require_on_paper=False)
-      for c in flap.circle_centers
-  ]
-  if centers:
-    min_cx = min(c.x for c in flap.circle_centers)
-    max_cx = max(c.x for c in flap.circle_centers)
-    min_cy = min(c.y for c in flap.circle_centers)
-    max_cy = max(c.y for c in flap.circle_centers)
-    rx = max(
-        min_cx - flap.rect.x,
-        (flap.rect.x + flap.rect.width) - max_cx,
-    )
-    ry = max(
-        min_cy - flap.rect.y,
-        (flap.rect.y + flap.rect.height) - max_cy,
-    )
-    x_unclipped = flap.rect.x > 0 or (
-        grid_size is None or flap.rect.x + flap.rect.width < grid_size
-    )
-    y_unclipped = flap.rect.y > 0 or (
-        grid_size is None or flap.rect.y + flap.rect.height < grid_size
-    )
-    if rx > 0 and ry > 0 and x_unclipped and y_unclipped:
-      grid_radius = min(rx, ry)
-    elif rx > 0 and x_unclipped:
-      grid_radius = rx
-    elif ry > 0 and y_unclipped:
-      grid_radius = ry
-    else:
-      grid_radius = max(rx, ry)
-    if grid_radius > 0:
-      return rectangle_lib.Rectangle(
-          name=flap.id,
-          x_start=float(min_cx - grid_radius),
-          y_start=float(min_cy - grid_radius),
-          x_len=float((max_cx - min_cx) + 2 * grid_radius),
-          y_len=float((max_cy - min_cy) + 2 * grid_radius),
-          circle_centers=centers,
-      )
-  return flap.rect.to_rectangle(name=flap.id, circle_centers=centers)
+  return flap.to_unclipped_rectangle(grid_size)
 
 
 def ensure_unmerged_flap_shapes(
@@ -126,23 +87,52 @@ def legacy_inputs(
     unmerged_sf = copy.deepcopy(unmerged_sf)
     ensure_unmerged_flap_shapes(unmerged_sf, merged_sf)
 
+  sfs: list[packing_types.SacrificialFlap] | None = None
+  ls_rect_by_id: dict[str, rectangle_lib.Rectangle] = {}
+  if packed.level_shift_reservations:
+    sfs, ls_rect_by_id = packing_ls.reconstruct_pocket_packing_data(
+        grid_size=packed.grid_size,
+        flaps=packed.flaps,
+        rivers=packed.rivers,
+        reservations=packed.reservations,
+        level_shift_reservations=packed.level_shift_reservations,
+    )
+
+  prefix = packing_types.AXIS_FILLER_PREFIX
   flap_rectangles = [
       unclipped_flap_rectangle(f, grid_size=packed.grid_size)
       for f in packed.flaps.values()
   ]
+  for r in packed.reservations:
+    if r.id in ls_rect_by_id:
+      flap_rectangles.append(ls_rect_by_id[r.id])
+    else:
+      res_name = r.id if r.id.startswith(prefix) else f'{prefix}_{r.id}'
+      flap_rectangles.append(r.rect.to_rectangle(name=res_name))
   packing_rivers = {
       r_id: r.to_packing_river(packed.grid_size)
       for r_id, r in packed.rivers.items()
   }
   if flap_rectangles or packing_rivers:
+    poly_map = {
+        f.id: types.SimpleNamespace(
+            offset=(f.rect.x, f.rect.y),
+            size=(f.rect.width, f.rect.height),
+        )
+        for f in packed.flaps.values()
+    }
+    for r in packed.reservations:
+      poly_id = (
+          ls_rect_by_id[r.id].name
+          if r.id in ls_rect_by_id
+          else (r.id if r.id.startswith(prefix) else f'{prefix}_{r.id}')
+      )
+      poly_map[poly_id] = types.SimpleNamespace(
+          offset=(r.rect.x, r.rect.y),
+          size=(r.rect.width, r.rect.height),
+      )
     tracker_proxy: Any = types.SimpleNamespace(
-        packed_polygons={
-            f.id: types.SimpleNamespace(
-                offset=(f.rect.x, f.rect.y),
-                size=(f.rect.width, f.rect.height),
-            )
-            for f in packed.flaps.values()
-        },
+        packed_polygons=poly_map,
         packed_rivers=packing_rivers,
     )
     hinge_infos = utils_packing_svg.extract_hinges_info(
@@ -160,7 +150,7 @@ def legacy_inputs(
       stick_figure=merged_sf,
       unmerged_stick_figure=unmerged_sf,
       hinges=hinge_infos,
-      sacrificial_flaps=None,
+      sacrificial_flaps=sfs,
       tracker=None,
       details=tiling_details,
       config=packed.config,

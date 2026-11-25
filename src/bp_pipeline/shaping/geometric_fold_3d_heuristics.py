@@ -1056,6 +1056,7 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
   stick_figure = dataclasses.replace(stick_figure, root=root.name)
   stick_figure = stick_figure.align_root_stick_to_target_azimuth_elevation()
 
+  initial_flaps_by_name = {flap.name: flap for flap in shaping_flaps}
   if shaping_data is None:
     shaping_data = heuristics_utils.get_heuristics_shaping_data(
         stick_figure=stick_figure,
@@ -1220,10 +1221,13 @@ def get_shaping_creases_with_3d_geometric_folding_heuristics(
       element_creases: list[crease_utils.Crease] = []
       element_had_assertion_failure = False
       empty_reason = 'no_creases'
-      extra_limiting_rectangles = [
-          shaping_flaps_by_name[sac_flap].to_legacy_rectangle()
-          for sac_flap in flap_info_dict[element.name].sacrificial_flaps
-      ]
+      extra_limiting_rectangles: list[shaping_utils.Rectangle] = []
+      for sac_flap in flap_info_dict[element.name].sacrificial_flaps:
+        sac_elem = shaping_flaps_by_name.get(
+            sac_flap
+        ) or initial_flaps_by_name.get(sac_flap)
+        if sac_elem is not None:
+          extra_limiting_rectangles.append(sac_elem.to_legacy_rectangle())
       hinge_inscribe_depth = hparams.per_flap_hinge_inscribe_depth.get(
           element.name,
           hparams.default_inscribe_hparams.hinge_inscribe_depth,

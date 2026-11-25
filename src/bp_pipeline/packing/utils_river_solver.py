@@ -33,6 +33,7 @@ from ..stick_figures import stick_figure
 from ..stick_figures import traversal
 from . import config as config_lib
 from . import hugging_river_generator
+from . import level_shifter
 from . import river as river_lib
 from . import river_adjacency
 from . import scoring
@@ -1824,6 +1825,7 @@ def find_river_candidates(
   start_cell_info = pocket_start_cell or find_adjacent_start_cell(
       stick, tree, tracker, grid_size, debug
   )
+  hugging_sf = None
   effective_occupancy = tracker.occupancy_grid
   if start_cell_info:
     hug_boundaries = False
@@ -1833,6 +1835,20 @@ def find_river_candidates(
       effective_occupancy = grid_for_area_computation
 
     effective_start_cell = start_cell_info
+    if config.use_level_shifter and stick.requires_level_shifter:
+      sf_result = level_shifter.place_hugging_side_sacrificial_flap(
+          start_cell_info, grid_size, tracker.occupancy_grid
+      )
+      if sf_result is None:
+        return
+      hugging_sf, effective_start_cell = sf_result
+      effective_occupancy = effective_occupancy.copy()
+      offset_x, offset_y = hugging_sf.offset
+      size_w, size_h = hugging_sf.size
+      effective_occupancy[
+          offset_y : offset_y + size_h, offset_x : offset_x + size_w
+      ] = True
+
     hug_side = river_lib.HugSide.LEFT
     if debug.is_active():
       debug.record_step(
@@ -2007,6 +2023,87 @@ def find_river_candidates(
     joint_to_side, side_areas = assignment
 
     sf_pair = None
+    if hugging_sf is not None and isinstance(river, river_lib.HuggingRiver):
+      temp_grid = effective_occupancy.copy()
+      for path in river.subriver_paths:
+        coords = np.array(path)
+        valid = (
+            (coords[:, 0] >= 0)
+            & (coords[:, 0] < grid_size)
+            & (coords[:, 1] >= 0)
+            & (coords[:, 1] < grid_size)
+        )
+        temp_grid[coords[valid, 0], coords[valid, 1]] = True
+      opposite_sf = next(
+          level_shifter.find_opposite_sacrificial_slot(
+              hugging_sf, river, temp_grid, is_symmetric=is_symmetric
+          ),
+          None,
+      )
+      if opposite_sf is None:
+        continue
+      side_to_joint = {v: k for k, v in joint_to_side.items()}
+      hugging_sf_tagged = dataclasses.replace(
+          hugging_sf,
+          river_sf_info=types.RiverSfInfo(
+              river_name=stick.name,
+              river_side='hugging',
+              parent_joint=side_to_joint.get('hugging', ''),
+          ),
+      )
+      opposite_sf = dataclasses.replace(
+          opposite_sf,
+          river_sf_info=types.RiverSfInfo(
+              river_name=stick.name,
+              river_side='opposite',
+              parent_joint=side_to_joint.get('opposite', ''),
+          ),
+      )
+      sf_pair = (hugging_sf_tagged, opposite_sf)
+    elif (
+        config.use_level_shifter
+        and stick.requires_level_shifter
+        and isinstance(river, (river_lib.River, river_lib.LShapedRiver))
+    ):
+      sf_pair = next(
+          level_shifter.find_aligned_sacrificial_slots(
+              river, tracker.occupancy_grid, is_symmetric=is_symmetric
+          ),
+          None,
+      )
+      if sf_pair is not None:
+        p1, p2 = sf_pair
+        side_to_joint = {v: k for k, v in joint_to_side.items()}
+        if isinstance(river, river_lib.River):
+          if river.orientation == river_lib.RiverOrientation.HORIZONTAL:
+            side1, side2 = 'top', 'bottom'
+          else:
+            side1, side2 = 'left', 'right'
+        else:
+          inner_mask, _ = river.get_area_masks(river.grid_size)
+          c1, r1 = p1.offset
+          if inner_mask[max(r1, 0), max(c1, 0)]:
+            side1, side2 = 'inner', 'outer'
+          else:
+            side1, side2 = 'outer', 'inner'
+        p1 = dataclasses.replace(
+            p1,
+            river_sf_info=types.RiverSfInfo(
+                river_name=stick.name,
+                river_side=side1,
+                parent_joint=side_to_joint.get(side1, ''),
+            ),
+        )
+        p2 = dataclasses.replace(
+            p2,
+            river_sf_info=types.RiverSfInfo(
+                river_name=stick.name,
+                river_side=side2,
+                parent_joint=side_to_joint.get(side2, ''),
+            ),
+        )
+        sf_pair = (p1, p2)
+
     packed_flaps = attempt_flap_packing(
         river,  # pyrefly: ignore[bad-argument-type]
         step,

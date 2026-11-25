@@ -321,15 +321,20 @@ def get_heuristics_shaping_data(
   merged_sf = merged_sf.align_root_stick_to_target_azimuth_elevation()
 
   hinges = list(hinge_info_list)
-  if merge_converter:
-    if sacrificial_flaps:
-      raise NotImplementedError(
-          'Sacrificial flaps are unsupported with merge_converter renaming.'
-      )
+  if merge_converter and any(k != v for k, v in merge_converter.items()):
     packing_to_tree = {v: k for k, v in merge_converter.items()}
     shaping_flaps, shaping_rivers = _rename_elements_for_merge_converter(
         shaping_flaps, shaping_rivers, packing_to_tree
     )
+    sacrificial_flaps = [
+        dataclasses.replace(
+            sf,
+            shifted_element_name=packing_to_tree.get(
+                sf.shifted_element_name, sf.shifted_element_name
+            ),
+        )
+        for sf in sacrificial_flaps
+    ]
     hinges = [
         dataclasses.replace(
             h,

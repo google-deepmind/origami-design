@@ -78,6 +78,13 @@ models:
         -   `--pack-timeout` (default `120.0`s) bounds the total multi-grid
             packing sweep so over-constrained 3-river-class trees fail fast
             instead of stalling.
+        -   `--use-level-shifter` reserves sacrificial `2x2` corner / `2x4`
+            river pockets on `width: 2` sticks (`builtin` packer and solver
+            only) so solved bases widen wide flaps and rivers onto shifted
+            integer axial-crease elevations. Leaf flaps must have
+            `length > width` (`length >= 3` for `width: 2`) to receive a
+            pocket; wide flaps with `length <= width` get no pocket and keep
+            folded width 1.
         -   `--batch-dir <dir>` processes all `StickFigure` JSONs in `<dir>`,
             writing `<output_dir>/<stem>/report.json` incrementally as each
             design finishes and skipping report/metadata/`.bps.json` files.

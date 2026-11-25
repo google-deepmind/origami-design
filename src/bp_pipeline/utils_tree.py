@@ -24,6 +24,7 @@ import networkx as nx
 from .crease_pattern import crease
 from .packing import config as config_lib
 from .packing import types
+from .packing import utils_packing_flaps
 from .stick_figures import packing_utils
 from .stick_figures import stick as stick_lib
 from .stick_figures import stick_figure
@@ -89,6 +90,7 @@ def _calculate_area_for_river_side(
     flap_to_pocket: dict[str, packing_utils.FlapPocket],
     river_indices_in_traversal: dict[str, int],
     current_river_name: str,
+    use_level_shifter: bool = False,
 ) -> float:
   """Calculates the area requirement for one side of a river."""
   area = 0.0
@@ -109,7 +111,14 @@ def _calculate_area_for_river_side(
       ):
         is_packed_intermediately = True
     if not is_packed_intermediately:
-      area += stick.length**2
+      if use_level_shifter and stick.requires_level_shifter:
+        margin = utils_packing_flaps.level_shifter_center_margin(
+            round(stick.width)
+        )
+        eff_len = stick.length + margin
+        area += eff_len**2
+      else:
+        area += stick.length**2
   return area
 
 
@@ -197,6 +206,7 @@ def compute_constraints_along_traversal(
           flap_to_pocket,
           river_indices_in_traversal,
           current_stick.name,
+          use_level_shifter=config.use_level_shifter,
       )
       sum2 = _calculate_area_for_river_side(
           sticks2,
@@ -204,6 +214,7 @@ def compute_constraints_along_traversal(
           flap_to_pocket,
           river_indices_in_traversal,
           current_stick.name,
+          use_level_shifter=config.use_level_shifter,
       )
       step['area_sides'] = {current_stick.start: sum1, current_stick.end: sum2}
 

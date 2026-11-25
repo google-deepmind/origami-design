@@ -222,6 +222,10 @@ class ShapingState:
     flat_backbone: Latest 2-D flat-foldable backbone when `pattern` carries a
       partial-fold 3-D overlay, or `None`.
     base_tree: Initial unmerged stick figure preserved for `reset()`.
+    ls_template_pattern: Pre-widened `LS_TEMPLATE` crease pattern for replaying
+      `level_shifter` changes cleanly, or `None`.
+    level_shift_settings: Active `(element_name, direction, position_percent)`
+      overrides applied on top of `ls_template_pattern`.
   """
 
   tree: stick_figure_lib.StickFigure
@@ -234,6 +238,8 @@ class ShapingState:
   history: tuple[dict[str, Any], ...] = ()
   flat_backbone: crease_pattern_lib.CreasePattern | None = None
   base_tree: stick_figure_lib.StickFigure | None = None
+  ls_template_pattern: crease_pattern_lib.CreasePattern | None = None
+  level_shift_settings: tuple[tuple[str, str, float], ...] = ()
 
   @classmethod
   def create(
@@ -247,6 +253,7 @@ class ShapingState:
       narrowed_elements: Sequence[str] = (),
       history: Sequence[Mapping[str, Any]] = (),
       config: ToolConfig = ToolConfig(),
+      ls_template_pattern: crease_pattern_lib.CreasePattern | None = None,
   ) -> 'ShapingState':
     """Constructs a `ShapingState` without mutating caller inputs."""
     tree_copy = copy.deepcopy(tree)
@@ -256,6 +263,11 @@ class ShapingState:
     ):
       compute_ridges.assign_flap_shapes_from_packing_output(tree_copy, packing)
     base_pattern = _with_tolerance(solving.crease_pattern, config.cp_tolerance)
+    resolved_ls_tpl = (
+        _with_tolerance(ls_template_pattern, config.cp_tolerance)
+        if ls_template_pattern is not None
+        else None
+    )
     if pattern is None:
       active_pattern = base_pattern
       resolved_backbone = None
@@ -282,6 +294,7 @@ class ShapingState:
         history=tuple(dict(item) for item in history),
         flat_backbone=resolved_backbone,
         base_tree=tree_copy,
+        ls_template_pattern=resolved_ls_tpl,
     )
 
   @classmethod
@@ -301,8 +314,21 @@ class ShapingState:
     )
     if tree is None:
       raise ValueError('SolvedCreasePattern has no associated StickFigure.')
+    ls_template_cp = next(
+        (
+            s.creases
+            for s in solved.stages
+            if s.name == bus.LS_TEMPLATE_STAGE_NAME
+        ),
+        None,
+    )
     return cls.create(
-        tree, packing_out, solver_res, pattern=pattern, config=config
+        tree,
+        packing_out,
+        solver_res,
+        pattern=pattern,
+        config=config,
+        ls_template_pattern=ls_template_cp,
     )
 
   def to_shaped(
@@ -445,8 +471,17 @@ class ShapingState:
       self,
   ) -> tuple[list[ShapingFlap], list[ShapingRiver]]:
     """Shaping flaps and rivers corresponding to the merged packing tree."""
+    reserved_ids = {
+        sf.polygon_name for sf in (self.packing.sacrificial_flaps or ())
+    }
+    limb_rectangles = [
+        r
+        for r in self.flap_rectangles
+        if r.name not in reserved_ids
+        and not r.name.startswith(packing_types.AXIS_FILLER_PREFIX)
+    ]
     return shaping_elements.convert_packing_elements_to_shaping_elements(
-        packing_rectangles=self.flap_rectangles,
+        packing_rectangles=limb_rectangles,
         packing_rivers=self.packing.packing_rivers,
         packing_grid_size=self.packing_grid_size,
         solving_grid_size=self.solving_grid_size,
@@ -478,6 +513,7 @@ class ShapingState:
         central_crease_removed=self.central_crease_removed,
         shape_with_unmerged_tree=True,
         merge_converter=self.merge_converter,
+        sacrificial_flaps=self.packing.sacrificial_flaps or (),
         use_tree_root=self.config.use_tree_root,
     )
 
@@ -487,7 +523,7 @@ class ShapingState:
   ) -> tuple[list[ShapingFlap], list[ShapingRiver]]:
     """Shaping flaps and rivers for every stick of the unmerged tree."""
     data = self.shaping_heuristic_data
-    return data['shaping_flaps'], data['shaping_rivers']
+    return list(data['shaping_flaps']), data['shaping_rivers']
 
   @functools.cached_property
   def shaping_elements(self) -> tuple[list[ShapingFlap], list[ShapingRiver]]:

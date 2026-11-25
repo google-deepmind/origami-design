@@ -30,6 +30,7 @@ from bp_pipeline.crease_pattern import symmetry
 from bp_pipeline.crease_pattern.parser import cp_format
 from bp_pipeline.crease_pattern.parser import svg as svg_parser
 from bp_pipeline.packing import config as packing_config_lib
+from bp_pipeline.packing import level_shifter as packing_ls
 from bp_pipeline.packing import packing_output as packing_output_lib
 from bp_pipeline.packing import river as river_lib
 from bp_pipeline.packing import types as packing_types
@@ -54,6 +55,7 @@ class BaseType(enum.Enum):
 FlapType = rectangle_lib.FlapType
 FlapTipShape = stick_lib.FlapTipShape
 RiverKind = Literal['straight', 'l_shaped', 'hugging']
+LS_TEMPLATE_STAGE_NAME = 'LS Template CP'
 
 
 def _require_int(value: int | float, field_name: str) -> int:
@@ -334,6 +336,65 @@ class Flap:
         for c in self.circle_centers
     ]
     return self.rect.to_rectangle(name=self.id, circle_centers=centers)
+
+  def to_unclipped_rectangle(
+      self, grid_size: int | None = None
+  ) -> rectangle_lib.Rectangle:
+    """Reconstructs unclipped packing `Rectangle` around `circle_centers`."""
+    centers = [
+        point.Point(x=float(c.x), y=float(c.y), require_on_paper=False)
+        for c in self.circle_centers
+    ]
+    if centers:
+      min_cx = min(c.x for c in self.circle_centers)
+      max_cx = max(c.x for c in self.circle_centers)
+      min_cy = min(c.y for c in self.circle_centers)
+      max_cy = max(c.y for c in self.circle_centers)
+      rx = max(
+          min_cx - self.rect.x, (self.rect.x + self.rect.width) - max_cx
+      )
+      ry = max(
+          min_cy - self.rect.y, (self.rect.y + self.rect.height) - max_cy
+      )
+      x_unclipped = self.rect.x > 0 or (
+          grid_size is None or self.rect.x + self.rect.width < grid_size
+      )
+      y_unclipped = self.rect.y > 0 or (
+          grid_size is None or self.rect.y + self.rect.height < grid_size
+      )
+      if rx > 0 and ry > 0 and x_unclipped and y_unclipped:
+        r_grid = min(rx, ry)
+      elif rx > 0 and x_unclipped:
+        r_grid = rx
+      elif ry > 0 and y_unclipped:
+        r_grid = ry
+      else:
+        r_grid = max(rx, ry)
+      if r_grid > 0:
+        return rectangle_lib.Rectangle(
+            name=self.id,
+            x_start=float(min_cx - r_grid),
+            y_start=float(min_cy - r_grid),
+            x_len=float((max_cx - min_cx) + 2 * r_grid),
+            y_len=float((max_cy - min_cy) + 2 * r_grid),
+            circle_centers=centers,
+        )
+    return self.rect.to_rectangle(name=self.id, circle_centers=centers)
+
+
+@dataclasses.dataclass(frozen=True)
+class ReservedRegion:
+  """A reserved grid rectangle whose cells belong to no flap or river.
+
+  Export and import count its cells as covered, and the 3D mesh marks its faces
+  `'reserved'`. `PackingOutput` knows a region only by `AXIS_FILLER_PREFIX` (or
+  `level_shift_reservations` when present), so `to_packing_output` preserves
+  prefixed/pocket IDs verbatim and prefixes others. `.bps` import currently
+  synthesizes ridges assuming even-width axis-filler geometry.
+  """
+
+  id: str
+  rect: GridRect
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -822,6 +883,38 @@ def _render_merged_svg(
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
+class LevelShiftReservation:
+  """Packer-neutral record of reserved regions set aside to level-shift a stick.
+
+  Attributes:
+    stick: Stick (flap or river) whose folded width this reservation widens.
+    region_ids: IDs of `ReservedRegion` entries in
+      `PackedCreasePattern.reservations` set aside for `stick`.
+  """
+
+  stick: str
+  region_ids: tuple[str, ...]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class AppliedLevelShift:
+  """Packer-neutral record of axial creases shifted to a target level.
+
+  Attributes:
+    stick: Stick whose folded width was widened by this shift.
+    level: Exact integer folded level (e.g. `2` or `-1`) of `axial_creases`.
+    axial_creases: Canonical integer-grid segments of the shifted axial creases.
+  """
+
+  stick: str
+  level: int
+  axial_creases: tuple[GridSegment, ...]
+
+  def __post_init__(self):
+    object.__setattr__(self, 'level', int(self.level))
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class PackedCreasePattern:
   """Immutable stage record produced by packing."""
 
@@ -834,6 +927,8 @@ class PackedCreasePattern:
   hinges: tuple[Hinge, ...]
   config: packing_config_lib.PackingConfig
   diagnostics: PackingDiagnostics
+  reservations: tuple[ReservedRegion, ...] = ()
+  level_shift_reservations: tuple[LevelShiftReservation, ...] = ()
 
   @functools.cached_property
   def hinge_at(self) -> HingeIndex:
@@ -858,14 +953,40 @@ class PackedCreasePattern:
     packed_tree = output.stick_figure
 
     rect_list = output.flap_rectangles or []
-    all_flap_ids = {r.name for r in rect_list}
+    sac_ids = {sf.polygon_name for sf in (output.sacrificial_flaps or ())}
+    sac_tree_names = sac_ids | {
+        sid.removesuffix(packing_types.COPY_SUFFIX) for sid in sac_ids
+    }
+    if packed_tree is not None and sac_tree_names:
+      packed_tree = dataclasses.replace(
+          packed_tree,
+          children=[
+              s for s in packed_tree.children if s.name not in sac_tree_names
+          ],
+      )
     packed_sticks_by_name = (
         {s.name: s for s in packed_tree.children}
         if packed_tree is not None
         else {}
     )
-    flaps: dict[str, Flap] = {}
+    reservations: list[ReservedRegion] = []
+    seen_res_ids: set[str] = set()
+    non_reserved_rects: list[rectangle_lib.Rectangle] = []
     for rect in rect_list:
+      flap_id = rect.name
+      grid_rect = GridRect.from_rectangle(rect, grid_size=resolved_grid_size)
+      if (
+          flap_id.startswith(packing_types.AXIS_FILLER_PREFIX)
+          or flap_id in sac_ids
+      ):
+        reservations.append(ReservedRegion(id=flap_id, rect=grid_rect))
+        seen_res_ids.add(flap_id)
+        continue
+      non_reserved_rects.append(rect)
+
+    all_flap_ids = {r.name for r in non_reserved_rects}
+    flaps: dict[str, Flap] = {}
+    for rect in non_reserved_rects:
       flap_id = rect.name
       stick_name = (
           flap_id[: -len(packing_types.COPY_SUFFIX)]
@@ -948,6 +1069,39 @@ class PackedCreasePattern:
       )
     hinges = filter_and_merge_hinges(raw_hinges, cp, resolved_grid_size)
 
+    ls_ids_by_stick: dict[str, list[str]] = {}
+    for sf in output.sacrificial_flaps or ():
+      if sf.polygon_name not in seen_res_ids:
+        clipped_sf = GridRect(
+            x=sf.placement.offset[0],
+            y=sf.placement.offset[1],
+            width=sf.placement.size[0],
+            height=sf.placement.size[1],
+        ).clipped(resolved_grid_size)
+        if clipped_sf.width > 0 and clipped_sf.height > 0:
+          reservations.append(
+              ReservedRegion(id=sf.polygon_name, rect=clipped_sf)
+          )
+          seen_res_ids.add(sf.polygon_name)
+      if sf.polygon_name not in seen_res_ids:
+        continue
+      stick_key = sf.shifted_element_name
+      if (
+          stick_key.endswith(packing_types.COPY_SUFFIX)
+          and stick_key not in flaps
+          and stick_key not in rivers
+      ):
+        stick_key = stick_key.removesuffix(packing_types.COPY_SUFFIX)
+      bucket = ls_ids_by_stick.setdefault(stick_key, [])
+      if sf.polygon_name not in bucket:
+        bucket.append(sf.polygon_name)
+
+    ls_reservations = tuple(
+        LevelShiftReservation(stick=stick_key, region_ids=tuple(region_ids))
+        for stick_key, region_ids in ls_ids_by_stick.items()
+        if region_ids
+    )
+
     return cls(
         design=design,
         packed_tree=packed_tree,
@@ -960,16 +1114,42 @@ class PackedCreasePattern:
         diagnostics=PackingDiagnostics.from_tiling_details(
             output.details, default_grid_size=resolved_grid_size
         ),
+        reservations=tuple(reservations),
+        level_shift_reservations=ls_reservations,
     )
 
   def to_packing_output(self) -> packing_output_lib.PackingOutput:
+    """Converts this packed pattern to a legacy PackingOutput."""
     unmerged_sf = (
         self.design.source if self.design is not None else self.packed_tree
     )
+    prefix = packing_types.AXIS_FILLER_PREFIX
+    sfs: list[packing_types.SacrificialFlap] | None = None
+    ls_rect_by_id: Mapping[str, rectangle_lib.Rectangle] = {}
+    if self.level_shift_reservations:
+      sfs, ls_rect_by_id = packing_ls.reconstruct_pocket_packing_data(
+          grid_size=self.grid_size,
+          flaps=self.flaps,
+          rivers=self.rivers,
+          reservations=self.reservations,
+          level_shift_reservations=self.level_shift_reservations,
+      )
+    flap_rects: list[rectangle_lib.Rectangle] = []
+    for f in self.flaps.values():
+      if self.level_shift_reservations:
+        flap_rects.append(f.to_unclipped_rectangle(self.grid_size))
+      else:
+        flap_rects.append(f.to_rectangle())
+    for r in self.reservations:
+      if r.id in ls_rect_by_id:
+        flap_rects.append(ls_rect_by_id[r.id])
+      else:
+        res_name = r.id if r.id.startswith(prefix) else f'{prefix}_{r.id}'
+        flap_rects.append(r.rect.to_rectangle(name=res_name))
     return packing_output_lib.PackingOutput(
         success=True,
         packing_cp=self.creases,
-        flap_rectangles=[f.to_rectangle() for f in self.flaps.values()],
+        flap_rectangles=flap_rects,
         packing_rivers={
             r_id: r.to_packing_river(self.grid_size)
             for r_id, r in self.rivers.items()
@@ -977,7 +1157,7 @@ class PackedCreasePattern:
         stick_figure=self.packed_tree,
         unmerged_stick_figure=unmerged_sf,
         hinges=[h.to_hinge_info(self.grid_size) for h in self.hinges],
-        sacrificial_flaps=None,
+        sacrificial_flaps=sfs,
         tracker=None,
         details=typing.cast(Any, self.diagnostics.to_tiling_details()),
         config=self.config,
@@ -1129,6 +1309,7 @@ class SolvedCreasePattern:
       default=(), compare=False
   )
   stages: tuple[StageSnapshot, ...] = ()
+  applied_level_shifts: tuple[AppliedLevelShift, ...] = ()
 
   @property
   def grid_size(self) -> int:
@@ -1143,6 +1324,7 @@ class SolvedCreasePattern:
       config: 'hinge_utils.SolverConfig | None' = None,
       scale_factor: int = 1,
       stages: Sequence[StageSnapshot] = (),
+      applied_level_shifts: Sequence[AppliedLevelShift] = (),
   ) -> 'SolvedCreasePattern':
     """Constructs a SolvedCreasePattern from a SolverResult."""
     state = result.final_state
@@ -1172,6 +1354,7 @@ class SolvedCreasePattern:
         assigned_hinges=tuple(state.hinges),
         assigned_pleats=tuple(state.pleats),
         stages=tuple(stages),
+        applied_level_shifts=tuple(applied_level_shifts),
     )
 
   def to_svg(

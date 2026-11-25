@@ -430,10 +430,8 @@ class SacrificialFlap:
 
   @property
   def is_l_shaped(self) -> bool:
-    """Whether this sacrificial flap is one of an L-shaped pair."""
-    return not self.polygon_name.removesuffix(COPY_SUFFIX).endswith(
-        (RIVER_SF1_SUFFIX, RIVER_SF2_SUFFIX)
-    )
+    """Whether this sacrificial flap belongs to an L-shaped flap pocket."""
+    return isinstance(self.shifted_element, PolygonPlacement)
 
   def __post_init__(self):
     if self.is_corner:

@@ -44,15 +44,17 @@ _TURNAROUND_VIEWS: tuple[tuple[str, float, float, float], ...] = (
 
 @dataclasses.dataclass(frozen=True)
 class MeshRegion:
-  """A packed flap or river that mesh faces can belong to.
+  """A packed flap, river, or reserved region that mesh faces can belong to.
 
   Attributes:
-    kind: `'flap'` for a leaf limb, `'river'` for an internal one.
+    kind: `'flap'` for a leaf limb, `'river'` for an internal one, or
+      `'reserved'` for non-limb paper reserved by packing.
     sticks: Names of the source stick-figure sticks the region realizes, in
-      chain order when packing merged several sticks into one limb.
+      chain order when packing merged several sticks into one limb. Empty for
+      `'reserved'` regions.
   """
 
-  kind: Literal['flap', 'river']
+  kind: Literal['flap', 'river', 'reserved']
   sticks: tuple[str, ...]
 
 
@@ -522,7 +524,9 @@ def _face_regions(
     if region not in regions:
       regions.append(region)
     rects.extend((rect, regions.index(region)) for rect in limb_rects)
-  if not regions:
+  reserved_idx = len(regions)
+  rects.extend((res.rect, reserved_idx) for res in packed.reservations)
+  if not rects:
     return (), ()
 
   grid_size = packed.grid_size
@@ -541,7 +545,9 @@ def _face_regions(
             None,
         )
     )
-  return tuple(regions), tuple(faces_region)
+  if packed.reservations and reserved_idx in faces_region:
+    regions.append(MeshRegion('reserved', ()))
+  return (tuple(regions), tuple(faces_region)) if regions else ((), ())
 
 
 def _merged_interval_length(
@@ -797,8 +803,9 @@ def mesh_to_fold_dict(mesh: FoldedMesh3D, title: str) -> dict[str, Any]:
   field is empty or `None`, e.g. when built from a bare `CreasePattern`):
     - `file_bp:gridSize` (`int`): box-pleating grid size from the packed layout.
       Present when `mesh.grid_size is not None`.
-    - `file_bp:regions` (`list[dict[str, Any]]`): packed flaps and rivers, each
-      `{'kind': 'flap' | 'river', 'sticks': list[str]}` in chain order. Present
+    - `file_bp:regions` (`list[dict[str, Any]]`): packed flaps, rivers, and
+      reserved regions, each `{'kind': 'flap' | 'river' | 'reserved', 'sticks':
+      list[str]}` in chain order (empty `sticks` for `'reserved'`). Present
       when `mesh.regions` is non-empty.
     - `faces_bp:region` (`list[int | None]`): parallel to `faces_vertices`;
       index into `file_bp:regions` for the region containing each face centroid,

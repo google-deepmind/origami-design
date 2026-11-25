@@ -23,6 +23,7 @@ import numpy as np
 
 from .. import bus
 from ..packing import packing_output as packing_output_lib
+from ..packing import types as packing_types
 from ..stick_figures import stick as stick_lib
 from ..stick_figures import stick_figure as stick_figure_lib
 from ..stick_figures import traversal
@@ -275,6 +276,7 @@ def _extract_grid_boxes(
 
   if packing.packing_cp is None or not packing.flap_rectangles:
     raise ValueError('PackingOutput has no crease pattern or flap rectangles.')
+  sac_names = {sf.polygon_name for sf in (packing.sacrificial_flaps or ())}
   boxes = [
       _GridBox(
           name=rect.name,
@@ -284,6 +286,8 @@ def _extract_grid_boxes(
           y1=float(rect.y_start + rect.y_len),
       )
       for rect in packing.flap_rectangles
+      if rect.name not in sac_names
+      and not rect.name.startswith(packing_types.AXIS_FILLER_PREFIX)
   ]
   return int(packing.packing_cp.grid_size), boxes
 

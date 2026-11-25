@@ -25,10 +25,14 @@ from typing import Any
 
 import numpy as np
 
+from .. import bus
 from .. import folder_3d
 from .. import utils_tree
 from ..crease_pattern import crease as crease_utils
 from ..crease_pattern import crease_pattern as crease_pattern_lib
+from ..solving import hinges as hinge_utils
+from ..solving import level_shifters as level_shifters_lib
+from ..solving import utils_ls
 from ..stick_figures import angle_utils
 from ..stick_figures import stick_figure as stick_figure_lib
 from . import combined_heuristics
@@ -98,6 +102,7 @@ TOOL_NAMES: tuple[str, ...] = (
     'radial_fan',
     'apply_symmetric',
     'tree_edit',
+    'level_shifter',
 )
 
 
@@ -2718,6 +2723,9 @@ def _apply_symmetric_outcome(
         ],
     )
 
+  if inner == 'level_shifter':
+    return _level_shifter_outcome(state, element_name=element_name, **base)
+
   runner = _TOOL_OUTCOMES[inner]
   if left_arguments is not None and right_arguments is not None:
     mid = runner(state, element_name=element_name, **dict(left_arguments))
@@ -3069,6 +3077,198 @@ def tree_edit(
 
 
 # ------------------------------------------------------------------------------
+# 20. Sacrificial-pocket level shifter (`level_shifter`).
+# ------------------------------------------------------------------------------
+
+
+def _level_shifter_sym_pairs(state: ShapingState) -> dict[str, str]:
+  """Extracts symmetric stick-name pairs for level-shifter grouping."""
+  src = (
+      state.packing.stick_figure
+      if state.packing.stick_figure is not None
+      else state.tree
+  )
+  return {
+      s.name: s.symmetric_stick_name
+      for s in src.children
+      if s.symmetric_stick_name and s.symmetric_stick_name != s.name
+  }
+
+
+def _match_elevated_flap(
+    state: ShapingState,
+    element_name: str,
+    elevated: Sequence[utils_ls.LevelShiftable],
+    sym_pairs: Mapping[str, str],
+) -> utils_ls.LevelShiftable:
+  """Resolves `element_name` (merged or unmerged) to its `LevelShiftable`."""
+  _, merged_map = state.tree.merge_linear_chains()
+  sub_to_merged: dict[str, str] = {}
+  for m_name, subs in merged_map.items():
+    for sub in subs:
+      sub_to_merged[sub] = m_name
+  merged_target = sub_to_merged.get(element_name, element_name)
+  candidates = {merged_target, f'{merged_target}_copy'}
+  partner = sym_pairs.get(merged_target)
+  if partner:
+    candidates.add(partner)
+  for ef in elevated:
+    names = (
+        {ef.original.main_flap.name, ef.copy.main_flap.name}
+        if isinstance(ef, utils_ls.MirroredElevatedFlapPair)
+        else {ef.main_flap.name}
+    )
+    if names & candidates:
+      return ef
+  available = sorted(ef.main_flap.name for ef in elevated)
+  raise ValueError(
+      f'level_shifter: element {element_name!r} has no sacrificial pocket;'
+      f' available elevated elements: {available}.'
+  )
+
+
+def _level_shifter_outcome(
+    state: ShapingState,
+    *,
+    element_name: str,
+    position_percent: float = 0.5,
+    direction: str = 'auto',
+    verify_fold: bool = True,
+) -> state_lib.ToolOutcome:
+  """Applies or adjusts a width-2 sacrificial-pocket level shifter."""
+  if not 0.0 <= position_percent <= 1.0:
+    raise ValueError(
+        f'position_percent must be in [0, 1], got {position_percent}.'
+    )
+  if direction not in ('auto', 'up', 'down'):
+    raise ValueError(
+        "direction must be 'auto', 'up', or 'down'; got"
+        f' {direction!r}.'
+    )
+  if not state.packing.sacrificial_flaps:
+    raise ValueError(
+        'level_shifter requires a packing produced with'
+        ' use_level_shifter=True (no sacrificial pocket flaps found).'
+    )
+
+  def _impl(st: ShapingState) -> state_lib.ToolOutcome:
+    sym_pairs = _level_shifter_sym_pairs(st)
+    elevated = utils_ls.get_elevated_flaps(
+        st.flap_rectangles,
+        st.packing.sacrificial_flaps or [],
+        st.solving_grid_size,
+        symmetric_pairs=sym_pairs,
+    )
+    target_ef = _match_elevated_flap(st, element_name, elevated, sym_pairs)
+
+    if st.ls_template_pattern is not None:
+      if state_lib.crease_multiset(st.pattern) != state_lib.crease_multiset(
+          st.base_pattern
+      ):
+        raise ValueError(
+            'level_shifter must be applied before adding 2-D shaping creases'
+            ' so sacrificial-pocket shifts can be replayed cleanly.'
+        )
+      settings_map: dict[str, tuple[str, float]] = {
+          ef.main_flap.name: ('auto', 0.5) for ef in elevated
+      }
+      for k, d_val, p_val in st.level_shift_settings:
+        settings_map[k] = (d_val, p_val)
+      settings_map[target_ef.main_flap.name] = (
+          direction,
+          float(position_percent),
+      )
+      cur_cp = st.ls_template_pattern
+      target_records = ()
+      for ef in elevated:
+        ef_dir, ef_pct = settings_map[ef.main_flap.name]
+        cur_cp, shifts = (
+            level_shifters_lib.apply_pocket_level_shifter_with_record(
+                cur_cp,
+                ef,
+                position_percent=ef_pct,
+                direction=ef_dir,
+                check_global_flat_foldability=True,
+                partner_by_name=sym_pairs,
+            )
+        )
+        if ef.main_flap.name == target_ef.main_flap.name:
+          target_records = shifts
+      new_settings = tuple(
+          (
+              ef.main_flap.name,
+              settings_map[ef.main_flap.name][0],
+              settings_map[ef.main_flap.name][1],
+          )
+          for ef in elevated
+      )
+    else:
+      if st.solving.base_type == hinge_utils.BaseType.LEVEL_SHIFTED:
+        raise ValueError(
+            'Re-positioning an applied level shifter requires an in-memory'
+            f' solve with record_stages=True (missing'
+            f' {bus.LS_TEMPLATE_STAGE_NAME!r} stage; stages are not serialized'
+            ' by bp.dumps/bp.loads).'
+        )
+      cur_cp, target_records = (
+          level_shifters_lib.apply_pocket_level_shifter_with_record(
+              st.pattern,
+              target_ef,
+              position_percent=float(position_percent),
+              direction=direction,
+              check_global_flat_foldability=True,
+              partner_by_name=sym_pairs,
+          )
+      )
+      new_settings = st.level_shift_settings
+
+    accepted, reason, _ = state_lib.accept_pattern(
+        st, cur_cp, allow_3d_vertices=False, verify_fold=verify_fold
+    )
+    if accepted is None:
+      raise ValueError(reason)
+    updated_solving = dataclasses.replace(
+        st.solving,
+        crease_pattern=accepted.pattern,
+        base_type=hinge_utils.BaseType.LEVEL_SHIFTED,
+        is_globally_flat_foldable=True,
+    )
+    out_state = accepted.replace(
+        base_pattern=accepted.pattern,
+        solving=updated_solving,
+        level_shift_settings=new_settings,
+    )
+    levels = sorted({r.level for r in target_records})
+    return state_lib.ToolOutcome(
+        state=out_state,
+        note=(
+            f'{element_name}: level_shifter(direction={direction},'
+            f' position_percent={position_percent:g}), levels={levels}.'
+        ),
+    )
+
+  return state_lib.run_with_3d_overlay(state, _impl, verify_fold=verify_fold)
+
+
+def level_shifter(
+    state: ShapingState,
+    *,
+    element_name: str,
+    position_percent: float = 0.5,
+    direction: str = 'auto',
+    verify_fold: bool = True,
+) -> ShapingState:
+  """Applies or adjusts a width-2 sacrificial-pocket level shifter."""
+  return _level_shifter_outcome(
+      state,
+      element_name=element_name,
+      position_percent=position_percent,
+      direction=direction,
+      verify_fold=verify_fold,
+  ).state
+
+
+# ------------------------------------------------------------------------------
 # Declarative registry, safe JSON dispatch, and non-mutating element probing.
 # ------------------------------------------------------------------------------
 
@@ -3092,6 +3292,7 @@ _TOOL_OUTCOMES: dict[str, Callable[..., state_lib.ToolOutcome]] = {
     'radial_fan': _radial_fan_outcome,
     'apply_symmetric': _apply_symmetric_outcome,
     'tree_edit': _tree_edit_outcome,
+    'level_shifter': _level_shifter_outcome,
 }
 
 
@@ -3200,11 +3401,43 @@ def probe(
   root_name = heuristics.get_first_stick_for_shaping(
       state.tree, use_tree_root=state.config.use_tree_root
   ).name
+  ls_eligible: set[str] = set()
+  if state.packing.sacrificial_flaps and (
+      state.ls_template_pattern is not None
+      or state.solving.base_type != hinge_utils.BaseType.LEVEL_SHIFTED
+  ):
+    try:
+      sym_pairs = _level_shifter_sym_pairs(state)
+      elevated = utils_ls.get_elevated_flaps(
+          state.flap_rectangles,
+          state.packing.sacrificial_flaps,
+          state.solving_grid_size,
+          symmetric_pairs=sym_pairs,
+      )
+      _, merged_map = state.tree.merge_linear_chains()
+      for ef in elevated:
+        m_names = (
+            (ef.original.main_flap.name, ef.copy.main_flap.name)
+            if isinstance(ef, utils_ls.MirroredElevatedFlapPair)
+            else (ef.main_flap.name,)
+        )
+        for raw_m in m_names:
+          clean_m = raw_m.removesuffix('_copy')
+          ls_eligible.add(clean_m)
+          ls_eligible.update(merged_map.get(clean_m, ()))
+          partner_m = sym_pairs.get(clean_m)
+          if partner_m:
+            ls_eligible.add(partner_m)
+            ls_eligible.update(merged_map.get(partner_m, ()))
+    except ValueError:
+      ls_eligible = set()
   out: dict[str, dict[str, Any]] = {}
   for name in targets:
     elem = state.element(name)
     info = dict(rows.get(name, {'name': name}))
     tools_ok: list[str] = []
+    if name in ls_eligible:
+      tools_ok.append('level_shifter')
     if name != root_name:
       try:
         _rotation_3d_outcome(

@@ -342,6 +342,50 @@ def _hinge_info_from_dict(data: Mapping[str, Any]) -> packing_types.HingeInfo:
   )
 
 
+def _sacrificial_flap_to_dict(
+    sf: packing_types.SacrificialFlap,
+) -> dict[str, Any]:
+  """Serializes a SacrificialFlap (supporting flap and river targets)."""
+  if isinstance(sf.shifted_element, river_lib.PackingRiver):
+    shifted_dict = packing_river_to_dict(
+        sf.shifted_element, name=sf.shifted_element_name
+    )
+  else:
+    shifted_dict = _normalize_json_value(dataclasses.asdict(sf.shifted_element))
+  return {
+      'polygon_name': sf.polygon_name,
+      'placement': _normalize_json_value(dataclasses.asdict(sf.placement)),
+      'shifted_element_name': sf.shifted_element_name,
+      'orientation': sf.orientation,
+      'shifted_element': shifted_dict,
+      'crimp_direction': sf.crimp_direction,
+  }
+
+
+def _sacrificial_flap_from_dict(
+    data: Mapping[str, Any],
+) -> packing_types.SacrificialFlap:
+  """Deserializes a SacrificialFlap (supporting flap and river targets)."""
+  shifted_raw = data.get('shifted_element')
+  if isinstance(shifted_raw, Mapping) and 'river_type' in shifted_raw:
+    shifted_river = packing_river_from_dict(shifted_raw)
+    return packing_types.SacrificialFlap(
+        polygon_name=str(data['polygon_name']),
+        placement=packing_types.PolygonPlacement.from_dict(
+            dict(data['placement'])
+        ),
+        shifted_element_name=str(data['shifted_element_name']),
+        orientation=typing.cast(
+            packing_types.Orientation, str(data['orientation'])
+        ),
+        shifted_element=shifted_river,
+        crimp_direction=typing.cast(
+            packing_types.MainFlapPosition, str(data['crimp_direction'])
+        ),
+    )
+  return packing_types.SacrificialFlap.from_dict(dict(data))
+
+
 def pack_to_dict(
     output: packing_output_lib.PackingOutput,
 ) -> dict[str, Any]:
@@ -356,8 +400,7 @@ def pack_to_dict(
 
   if output.sacrificial_flaps is not None:
     sacrificial_flaps_list = [
-        _normalize_json_value(dataclasses.asdict(sf))
-        for sf in output.sacrificial_flaps
+        _sacrificial_flap_to_dict(sf) for sf in output.sacrificial_flaps
     ]
   else:
     sacrificial_flaps_list = None
@@ -437,8 +480,7 @@ def pack_from_dict(
   )
   if data.get('sacrificial_flaps') is not None:
     sacrificial_flaps = [
-        packing_types.SacrificialFlap.from_dict(sf)
-        for sf in data['sacrificial_flaps']
+        _sacrificial_flap_from_dict(sf) for sf in data['sacrificial_flaps']
     ]
   else:
     sacrificial_flaps = None
@@ -795,8 +837,20 @@ def _bus_hinge_from_dict(data: Mapping[str, Any]) -> bus.Hinge:
   )
 
 
+def _reserved_region_from_dict(
+    data: Mapping[str, Any], *, grid_size: int
+) -> bus.ReservedRegion:
+  if 'id' not in data or 'rect' not in data:
+    raise ValueError('ReservedRegion dict requires keys "id" and "rect".')
+  return bus.ReservedRegion(
+      id=str(data['id']),
+      rect=_grid_rect_from_dict(data['rect']).clipped(grid_size),
+  )
+
+
 def packed_cp_to_dict(packed: bus.PackedCreasePattern) -> dict[str, Any]:
-  return {
+  """Serializes a PackedCreasePattern to a dictionary."""
+  out: dict[str, Any] = {
       'type': 'PackedCreasePattern',
       'schema_version': SCHEMA_VERSION,
       'design': (
@@ -817,6 +871,64 @@ def packed_cp_to_dict(packed: bus.PackedCreasePattern) -> dict[str, Any]:
       'config': packing_config_to_dict(packed.config),
       'diagnostics': packed.diagnostics.to_tiling_details(),
   }
+  if packed.reservations:
+    out['reservations'] = [
+        {'id': r.id, 'rect': _grid_rect_to_dict(r.rect)}
+        for r in packed.reservations
+    ]
+  if packed.level_shift_reservations:
+    out['level_shift_reservations'] = [
+        _level_shift_reservation_to_dict(r)
+        for r in packed.level_shift_reservations
+    ]
+  return out
+
+
+def _level_shift_reservation_to_dict(
+    res: bus.LevelShiftReservation,
+) -> dict[str, Any]:
+  """Serializes a `LevelShiftReservation` to a JSON-compatible dictionary."""
+  return {
+      'stick': res.stick,
+      'region_ids': list(res.region_ids),
+  }
+
+
+def _level_shift_reservation_from_dict(
+    data: Mapping[str, Any],
+) -> bus.LevelShiftReservation:
+  if 'stick' not in data or 'region_ids' not in data:
+    raise ValueError(
+        'LevelShiftReservation dict requires keys "stick" and "region_ids".'
+    )
+  return bus.LevelShiftReservation(
+      stick=str(data['stick']),
+      region_ids=tuple(str(rid) for rid in data['region_ids']),
+  )
+
+
+def _applied_level_shift_to_dict(
+    shift: bus.AppliedLevelShift,
+) -> dict[str, Any]:
+  return {
+      'stick': shift.stick,
+      'level': shift.level,
+      'axial_creases': [
+          _grid_segment_to_dict(seg) for seg in shift.axial_creases
+      ],
+  }
+
+
+def _applied_level_shift_from_dict(
+    data: Mapping[str, Any],
+) -> bus.AppliedLevelShift:
+  return bus.AppliedLevelShift(
+      stick=str(data['stick']),
+      level=int(data['level']),
+      axial_creases=tuple(
+          _grid_segment_from_dict(seg) for seg in data.get('axial_creases', ())
+      ),
+  )
 
 
 def packed_cp_from_dict(data: Mapping[str, Any]) -> bus.PackedCreasePattern:
@@ -855,6 +967,14 @@ def packed_cp_from_dict(data: Mapping[str, Any]) -> bus.PackedCreasePattern:
   })
   raw_hinges = tuple(_bus_hinge_from_dict(h) for h in data['hinges'])
   hinges = bus.filter_and_merge_hinges(raw_hinges, creases, grid_size)
+  reservations = tuple(
+      _reserved_region_from_dict(r, grid_size=grid_size)
+      for r in data.get('reservations') or ()
+  )
+  ls_reservations = tuple(
+      _level_shift_reservation_from_dict(r)
+      for r in data.get('level_shift_reservations') or ()
+  )
   return bus.PackedCreasePattern(
       design=design,
       packed_tree=packed_tree,
@@ -867,11 +987,14 @@ def packed_cp_from_dict(data: Mapping[str, Any]) -> bus.PackedCreasePattern:
       diagnostics=bus.PackingDiagnostics.from_tiling_details(
           data['diagnostics'], default_grid_size=grid_size
       ),
+      reservations=reservations,
+      level_shift_reservations=ls_reservations,
   )
 
 
 def solved_cp_to_dict(solved: bus.SolvedCreasePattern) -> dict[str, Any]:
-  return {
+  """Serializes a `SolvedCreasePattern` to a JSON-compatible dictionary."""
+  out: dict[str, Any] = {
       'type': 'SolvedCreasePattern',
       'schema_version': SCHEMA_VERSION,
       'packed': packed_cp_to_dict(solved.packed),
@@ -891,6 +1014,11 @@ def solved_cp_to_dict(solved: bus.SolvedCreasePattern) -> dict[str, Any]:
       'assigned_hinges': [c.asdict() for c in solved.assigned_hinges],
       'assigned_pleats': [c.asdict() for c in solved.assigned_pleats],
   }
+  if solved.applied_level_shifts:
+    out['applied_level_shifts'] = [
+        _applied_level_shift_to_dict(s) for s in solved.applied_level_shifts
+    ]
+  return out
 
 
 def solved_cp_from_dict(data: Mapping[str, Any]) -> bus.SolvedCreasePattern:
@@ -930,6 +1058,10 @@ def solved_cp_from_dict(data: Mapping[str, Any]) -> bus.SolvedCreasePattern:
       ),
       assigned_pleats=tuple(
           crease.Crease.from_dict(c) for c in data.get('assigned_pleats', ())
+      ),
+      applied_level_shifts=tuple(
+          _applied_level_shift_from_dict(s)
+          for s in data.get('applied_level_shifts') or ()
       ),
   )
 

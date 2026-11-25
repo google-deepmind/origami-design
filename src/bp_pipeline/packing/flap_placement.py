@@ -25,6 +25,7 @@ from ..stick_figures import stick as stick_lib
 from . import config as config_lib
 from . import scoring
 from . import types
+from . import utils_packing_flaps
 from . import utils_packing_svg
 from . import utils_tracker
 
@@ -283,6 +284,33 @@ def validate_candidate(
       'placement': placement,
   }
   return valid_candidate
+
+
+def is_valid_level_shifter_corner(
+    *, off_x: int, off_y: int, grid_size: int, size: int
+) -> bool:
+  """Checks if a corner placement of the given size fits inside the grid."""
+  return (
+      off_x >= 0
+      and off_y >= 0
+      and off_x + size <= grid_size
+      and off_y + size <= grid_size
+  )
+
+
+def is_valid_ls_center(
+    placement: types.PolygonPlacement, grid_size: int, stick_width: int
+) -> bool:
+  """Checks if a placement center leaves room for level-shifter repacking."""
+  min_dist = utils_packing_flaps.level_shifter_center_margin(stick_width)
+  cx_int = placement.offset[0] + placement.size[0] // 2
+  cy_int = placement.offset[1] + placement.size[1] // 2
+  return (
+      cx_int >= min_dist
+      and cx_int <= grid_size - min_dist
+      and cy_int >= min_dist
+      and cy_int <= grid_size - min_dist
+  )
 
 
 def is_center_axis_on_paper(
@@ -667,7 +695,7 @@ def find_possible_flap_placements(
   Yields:
       Valid `Candidate` dictionaries found by the chosen strategy.
   """
-  del stick
+  is_level_shifter = config.use_level_shifter and stick.requires_level_shifter
   is_first_polygon = not tracker.packed_polygons
   is_on_axis = (
       is_symmetric
@@ -679,6 +707,7 @@ def find_possible_flap_placements(
       and start_on_corner
       and not tracker.occupancy_grid.any()
       and not is_on_axis
+      and not is_level_shifter
   ):
     yield _place_first_polygon_at_origin(current_stick_name, stick_name_to_dims)
     return
@@ -712,6 +741,15 @@ def find_possible_flap_placements(
     candidates = filter(
         lambda c: _placement_touches_cells(
             c['placement'], river_adjacent_cells
+        ),
+        candidates,
+    )
+
+  if is_level_shifter:
+    stick_width = round(stick.width)
+    candidates = filter(
+        lambda c: is_valid_ls_center(
+            c['placement'], tracker.grid_size, stick_width
         ),
         candidates,
     )

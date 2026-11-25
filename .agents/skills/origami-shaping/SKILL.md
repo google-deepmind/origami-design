@@ -16,7 +16,7 @@ turn a solved base into a finished 3D origami model:
    simultaneous 3D rotation, root-frame angle feedback, side-crossing repair,
    and deadline-bounded anatomical search (see `references/pose.md`).
 3. **Stateful actuator toolbox (`bp.ShapingState`, `bp.apply_shaping_tool`)**:
-   Applies any of 19 orthogonal 2D/3D shaping operators step by step while
+   Applies any of 20 orthogonal 2D/3D shaping operators step by step while
    preserving foldability and 3D partial-fold overlays (see
    `references/tools.md`).
 
@@ -74,7 +74,7 @@ custom_shaped = state.to_shaped(solved)
 ```
 
 Batch multiple steps with `bp.apply_shaping_tools(state, calls)`. Full
-parameter signatures for all 19 actuators live in `references/tools.md`.
+parameter signatures for all 20 actuators live in `references/tools.md`.
 
 ## 3. CLI Shaping Subcommands
 

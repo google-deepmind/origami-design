@@ -47,6 +47,7 @@ from .shaping import geometric_fold_3d_heuristics
 from .shaping import heuristics_3d
 from .solving import central_fold_utils
 from .solving import hinges as hinge_utils
+from .solving import level_shifters as level_shifters_lib
 from .solving import solvability
 from .stick_figures import shaping_templates
 from .stick_figures import stick_figure
@@ -1535,6 +1536,17 @@ def _solve_single_config(
     solver = recovery_ctx.active_solvers.get(solver_key)
 
   try:
+    if packing_output.sacrificial_flaps and packing_output.flap_rectangles:
+      ls_items = level_shifters_lib.solve_with_pocket_level_shifters(
+          packing_output,
+          solver_config,
+          scale_factor=scale,
+          resolved_solver='builtin',
+      )
+      if not ls_items:
+        raise hinge_utils.NoSolutionError('No level-shifter solutions found.')
+      return [sol for sol, _, _, _ in ls_items]
+
     if solver is not None:
       solver.config = solver_config.bind(
           grid_size=(

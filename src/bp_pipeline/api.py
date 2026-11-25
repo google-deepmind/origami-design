@@ -41,6 +41,7 @@ from .shaping import heuristics_3d
 from .shaping import recipes as recipes_lib
 from .shaping import toolbox as toolbox_lib
 from .solving import hinges as hinge_utils
+from .solving import level_shifters as level_shifters_lib
 from .stick_figures import stick as stick_lib
 from .stick_figures import stick_figure as stick_figure_lib
 from .stick_figures.examples import example_trees
@@ -544,6 +545,12 @@ def pack(
     raw_callback = _raw_callback
 
   if resolved_packer != 'builtin':
+    if task_cfg.packing_config.use_level_shifter:
+      msg = (
+          "PackingConfig(use_level_shifter=True) requires packer='builtin',"
+          f' got {resolved_packer!r}.'
+      )
+      raise PackingFailedError(msg, errors=(msg,))
     opts = _resolve_packer_options(
         packer_options, task_cfg=task_cfg, design=design
     )
@@ -658,8 +665,30 @@ def solve(
   elif solver is not None:
     effective_config = dataclasses.replace(effective_config, solver=solver)
   scaled_grid_size = int(packed.grid_size * scale_factor)
+  if packed.level_shift_reservations:
+    try:
+      ls_items = level_shifters_lib.solve_with_pocket_level_shifters(
+          packed,
+          effective_config,
+          scale_factor=scale_factor,
+          resolved_solver=resolved_solver,
+          record_stages=record_stages,
+      )
+    except (ValueError, IndexError) as err:
+      raise SolvingFailedError(str(err), errors=(str(err),)) from err
+    for sol, used_cfg, applied_shifts, stages_out in ls_items:
+      yield bus.SolvedCreasePattern.from_solver_result(
+          sol,
+          packed=packed,
+          config=used_cfg,
+          scale_factor=scale_factor,
+          stages=stages_out,
+          applied_level_shifts=applied_shifts,
+      )
+    return
+
   try:
-    solver = effective_config.make_from_cp(
+    solver_inst = effective_config.make_from_cp(
         packed.creases,
         grid_size=scaled_grid_size,
         packing_information=packed,
@@ -671,11 +700,11 @@ def solve(
     raise SolvingFailedError(str(err), errors=(str(err),)) from err
 
   try:
-    for sol in solver.iter_solutions():
+    for sol in solver_inst.iter_solutions():
       stages: tuple[bus.StageSnapshot, ...] = ()
-      if record_stages and solver.initial_stage_snapshots:
+      if record_stages and solver_inst.initial_stage_snapshots:
         final_cps = (
-            solver.borders
+            solver_inst.borders
             + sol.final_state.ridges
             + sol.final_state.pleats
             + sol.final_state.hinges
@@ -686,14 +715,14 @@ def solve(
                 name=name, creases=stage_cp, grid_size=scaled_grid_size
             )
             for name, stage_cp in (
-                *solver.initial_stage_snapshots,
+                *solver_inst.initial_stage_snapshots,
                 ('(7) Final Solving CP', stage7_cp),
             )
         )
       yield bus.SolvedCreasePattern.from_solver_result(
           sol,
           packed=packed,
-          config=solver.config,
+          config=solver_inst.config,
           scale_factor=scale_factor,
           stages=stages,
       )

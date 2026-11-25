@@ -1,6 +1,6 @@
 # Shaping Actuator Toolbox Reference
 
-All 19 tools returned by `bp.list_shaping_tools()` can be called via
+All 20 tools returned by `bp.list_shaping_tools()` can be called via
 `bp.apply_shaping_tool(state, name, arguments)`,
 `bp.apply_shaping_tools(state, calls)`, `bp-pipeline actuate`, or as keyword
 functions on `bp_pipeline.shaping.toolbox`.
@@ -232,3 +232,19 @@ equivalence, then shapes the updated tree onto the current base.
 - `tree: dict | None = None`, `stick_name_mapping: dict[str, str] | None = None`
 - `narrow: bool = False`, `only_edited: bool = False`,
   `verify_fold: bool = False`
+
+### `level_shifter`
+
+Adjusts the uniaxial elevation of a width-2 flap or river packed with
+sacrificial level-shifter pockets (`bp.PackingConfig(use_level_shifter=True)` /
+`--use-level-shifter`), splicing `2x2` 45-degree diamonds so shifted axial
+creases land on integer elevations (`+2` for `'up'`, `-1` for `'down'`) while
+preserving global flat-foldability. Solve with `record_stages=True` when
+re-positioning an already-widened base, and apply before adding 2D shaping
+creases.
+
+- `element_name: str` — Target width-2 flap or river (mirrored pairs shift
+  symmetrically).
+- `position_percent: float = 0.5` — Relative slot position in `[0, 1]`.
+- `direction: str = 'auto'` — `'auto'`, `'up'`, or `'down'`.
+- `verify_fold: bool = True`

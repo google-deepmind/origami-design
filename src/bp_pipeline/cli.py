@@ -221,6 +221,7 @@ def run_pipeline(
     use_sweep_fallback: bool = True,
     shaped_global_ff_timeout: float | None = 15.0,
     remove_central_crease: bool = False,
+    use_level_shifter: bool = False,
 ) -> dict[str, Any]:
   """Validates, packs, solves, shapes, and renders a StickFigure design.
 
@@ -254,6 +255,8 @@ def run_pipeline(
       flat-foldability verification (`None` disables).
     remove_central_crease: If True, remove the central symmetry crease during
       solving so centerline flaps remain open across the symmetry axis.
+    use_level_shifter: If True, pack width-2 flaps and rivers with sacrificial
+      level-shifter pockets and solve into widened bases.
 
   Returns:
     A structured JSON-serializable report dictionary.
@@ -317,13 +320,17 @@ def run_pipeline(
   t0 = time.monotonic()
   try:
     task_config = api.PackingTaskConfig(
-        packing_config=api.PackingConfig(use_level_shifter=False),
+        packing_config=api.PackingConfig(use_level_shifter=use_level_shifter),
         max_retries=max_retries,
         max_cps_per_grid_size=1,
         max_number_of_cps=1,
         sweep_timeout_seconds=pack_timeout,
     )
-    packed = api.pack(design, task_config)
+    packed = api.pack(
+        design,
+        task_config,
+        packer='builtin' if use_level_shifter else None,
+    )
     pack_time = round(time.monotonic() - t0, 3)
     gs_sq = (
         float(packed.grid_size * packed.grid_size)
@@ -391,12 +398,17 @@ def run_pipeline(
         remove_central_crease=remove_central_crease,
         up_down_method='flaps_down',
     )
+    cli_solver = (
+        'builtin'
+        if (use_level_shifter or packed.level_shift_reservations)
+        else None
+    )
     try:
-      solved = api.solve_best(packed, solver_config)
+      solved = api.solve_best(packed, solver_config, solver=cli_solver)
     except Exception:  # pylint: disable=broad-exception-caught
       if not use_sweep_fallback:
         raise
-      sweep_res = api.solve_sweep(packed)
+      sweep_res = api.solve_sweep(packed, solver=cli_solver)
       if not sweep_res:
         raise RuntimeError('solve_sweep found no flat-foldable solutions.')  # pylint: disable=raise-missing-from
       solved = sweep_res[0]
@@ -407,7 +419,7 @@ def run_pipeline(
         and use_sweep_fallback
         and solve_method_used == 'default_flaps_down'
     ):
-      sweep_res = api.solve_sweep(packed)
+      sweep_res = api.solve_sweep(packed, solver=cli_solver)
       for cand in sweep_res:
         if cand.is_globally_flat_foldable:
           solved = cand
@@ -686,6 +698,16 @@ def _build_argument_parser() -> argparse.ArgumentParser:
       dest='remove_central_crease',
       action='store_true',
       help='Remove the central symmetry crease during flat-foldable solving.',
+  )
+  parser.add_argument(
+      '--use-level-shifter',
+      '--use_level_shifter',
+      dest='use_level_shifter',
+      action='store_true',
+      help=(
+          'Pack width-2 flaps and rivers with sacrificial level-shifter'
+          ' pockets.'
+      ),
   )
   parser.add_argument(
       '--max-retries',
@@ -1227,6 +1249,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             render_visuals=render_visuals,
             shaped_global_ff_timeout=ff_timeout,
             remove_central_crease=args.remove_central_crease,
+            use_level_shifter=args.use_level_shifter,
         )
         batch_reports[json_file.name] = rep
         summary_file.write_text(
@@ -1261,6 +1284,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         render_visuals=render_visuals,
         shaped_global_ff_timeout=ff_timeout,
         remove_central_crease=args.remove_central_crease,
+        use_level_shifter=args.use_level_shifter,
     )
   finally:
     for log_target in filtered_targets:

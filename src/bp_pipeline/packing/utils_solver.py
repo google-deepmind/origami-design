@@ -27,6 +27,7 @@ from ..stick_figures import stick as stick_lib
 from ..stick_figures import stick_figure as stick_figure_lib
 from . import compute_ridges
 from . import config as config_lib
+from . import level_shifter
 from . import packing_output
 from . import scoring
 from . import shaping_flap_templates
@@ -469,6 +470,8 @@ def find_tiling_and_generate_crease_pattern(
     raise ValueError('Grid size must be positive.')
   if is_symmetric and grid_size % 2 == 1:
     raise ValueError('Grid size must be even for symmetric packing.')
+  if config.use_level_shifter:
+    level_shifter.validate_supported_level_shifter_widths(tree)
 
   # 1. Solve for the tiling
   logging.info('--- Running Tiling Solver ---')
@@ -695,6 +698,8 @@ def find_tiling_and_generate_crease_pattern(
             config=config,
             unmerged_tree=unmerged_tree,
         )
+        if config.use_level_shifter and config.use_l_shaped_level_shifter:
+          raw_result = level_shifter.apply_level_shifters(raw_result)
         if raw_result.success:
           valid_tiling_count += 1
           result = solution_callback(raw_result)
@@ -812,16 +817,17 @@ def find_tiling_and_generate_crease_pattern(
         )
     ]
   else:
-    result = solution_callback(
-        create_packing_output_from_tiling_solution(
-            final_placement,
-            grid_size,
-            tree,
-            details,
-            config=config,
-            unmerged_tree=unmerged_tree,
-        )
+    raw_result = create_packing_output_from_tiling_solution(
+        final_placement,
+        grid_size,
+        tree,
+        details,
+        config=config,
+        unmerged_tree=unmerged_tree,
     )
+    if config.use_level_shifter and config.use_l_shaped_level_shifter:
+      raw_result = level_shifter.apply_level_shifters(raw_result)
+    result = solution_callback(raw_result)
     outputs = [result] if result is not None else []
 
   return outputs
