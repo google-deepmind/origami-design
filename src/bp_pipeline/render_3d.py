@@ -16,7 +16,7 @@
 """Pure-Python 3D hinge-rotation mesh folder and Matplotlib shaded renderer."""
 
 import collections
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 import dataclasses
 import math
 import pathlib
@@ -31,7 +31,6 @@ from . import bus
 from . import folder_3d as fold_3d
 from .crease_pattern import crease as crease_lib
 from .crease_pattern import crease_pattern as cp_lib
-from .crease_pattern import point as point_lib
 
 _DEFAULT_PAPER_RGB = (0.85, 0.745, 0.596)
 
@@ -143,29 +142,54 @@ def _select_centroid_face(
   return start_face
 
 
-def _candidate_root_rivers(
+def _candidate_root_rects(
     packed: bus.PackedCreasePattern,
-) -> list[bus.River]:
-  """Returns packed rivers ordered by preference for the root trunk stick."""
+) -> list[bus.GridRect]:
+  """Returns packed rects ordered by preference for the root trunk stick."""
   root_name: str | None = None
+  merged_from: Mapping[str, tuple[str, ...]] = {}
   if packed.design is not None:
     root_name = packed.design.source.root
+    merged_from = packed.design.merged_from
   elif packed.packed_tree is not None:
     root_name = packed.packed_tree.root
 
   if root_name is not None:
-    exact = [
-        rv
-        for rv in packed.rivers.values()
-        if rv.stick == root_name and rv.rects
+    exact_rivers: list[bus.GridRect] = []
+    for rv in packed.rivers.values():
+      if rv.stick == root_name or root_name in merged_from.get(rv.stick, ()):
+        exact_rivers.extend(rv.rects)
+    if exact_rivers:
+      return exact_rivers
+    exact_flaps = [
+        fl.rect
+        for fl in packed.flaps.values()
+        if fl.id == fl.stick
+        and (
+            fl.stick == root_name or root_name in merged_from.get(fl.stick, ())
+        )
     ]
-    if exact:
-      return exact
+    if exact_flaps:
+      return exact_flaps
 
-  on_axis = [rv for rv in packed.rivers.values() if rv.is_on_axis and rv.rects]
-  if on_axis:
-    return on_axis
-  return [rv for rv in packed.rivers.values() if rv.rects]
+  on_axis_rivers: list[bus.GridRect] = []
+  for rv in packed.rivers.values():
+    if rv.is_on_axis:
+      on_axis_rivers.extend(rv.rects)
+  if on_axis_rivers:
+    return on_axis_rivers
+  mid_x = 0.5 * packed.grid_size
+  on_axis_flaps = [
+      fl.rect
+      for fl in packed.flaps.values()
+      if fl.id == fl.stick and fl.rect.x < mid_x < fl.rect.x + fl.rect.width
+  ]
+  if on_axis_flaps:
+    return on_axis_flaps
+  all_river_rects: list[bus.GridRect] = []
+  for rv in packed.rivers.values():
+    all_river_rects.extend(rv.rects)
+  return all_river_rects
 
 
 def _select_anchor_face(
@@ -173,62 +197,65 @@ def _select_anchor_face(
     faces: Sequence[Sequence[int]],
     packed: bus.PackedCreasePattern | None,
 ) -> int:
-  """Selects a stationary anchor facet inside the root trunk river region."""
-  if packed is None or packed.grid_size <= 0 or not packed.rivers:
+  """Selects a stationary anchor facet inside the root trunk region."""
+  if (
+      packed is None
+      or packed.grid_size <= 0
+      or (not packed.rivers and not packed.flaps)
+  ):
     return _select_centroid_face(vertices_2d, faces)
 
   gs = float(packed.grid_size)
-  rivers = _candidate_root_rivers(packed)
-  if not rivers:
+  root_rects = _candidate_root_rects(packed)
+  if not root_rects:
     return _select_centroid_face(vertices_2d, faces)
 
   min_area = 0.08 / (gs * gs)
   band_half = max(2.5 / gs, 0.08)
   candidates: list[tuple[bool, bool, bool, float, float, int]] = []
-  for river in rivers:
-    for rect in river.rects:
-      if rect.width <= 0 or rect.height <= 0:
+  for rect in root_rects:
+    if rect.width <= 0 or rect.height <= 0:
+      continue
+    rx0 = rect.x / gs - 0.5 - 1e-4
+    ry0 = rect.y / gs - 0.5 - 1e-4
+    rx1 = (rect.x + rect.width) / gs - 0.5 + 1e-4
+    ry1 = (rect.y + rect.height) / gs - 0.5 + 1e-4
+    mid_x = 0.5 * (rx0 + rx1)
+    mid_y = 0.5 * (ry0 + ry1)
+    horiz_band = rect.width >= rect.height
+    for f_idx, face in enumerate(faces):
+      face_len = len(face)
+      fx = sum(vertices_2d[v][0] for v in face) / face_len
+      fy = sum(vertices_2d[v][1] for v in face) / face_len
+      if not (rx0 <= fx <= rx1 and ry0 <= fy <= ry1):
         continue
-      rx0 = rect.x / gs - 0.5 - 1e-4
-      ry0 = rect.y / gs - 0.5 - 1e-4
-      rx1 = (rect.x + rect.width) / gs - 0.5 + 1e-4
-      ry1 = (rect.y + rect.height) / gs - 0.5 + 1e-4
-      mid_x = 0.5 * (rx0 + rx1)
-      mid_y = 0.5 * (ry0 + ry1)
-      horiz_band = rect.width >= rect.height
-      for f_idx, face in enumerate(faces):
-        face_len = len(face)
-        fx = sum(vertices_2d[v][0] for v in face) / face_len
-        fy = sum(vertices_2d[v][1] for v in face) / face_len
-        if not (rx0 <= fx <= rx1 and ry0 <= fy <= ry1):
-          continue
-        area2 = 0.0
-        vert_len = 0.0
-        horiz_len = 0.0
-        for i in range(face_len):
-          x1, y1 = vertices_2d[face[i]]
-          x2, y2 = vertices_2d[face[(i + 1) % face_len]]
-          area2 += x1 * y2 - x2 * y1
-          edx, edy = abs(x2 - x1), abs(y2 - y1)
-          if edx < 1e-4:
-            vert_len += edy
-          elif edy < 1e-4:
-            horiz_len += edx
-        area = abs(area2) * 0.5
-        if horiz_band:
-          spine_dist = abs(fx - 0.5 / gs) + 0.25 * abs(fy - mid_y)
-          parallel_len = vert_len
-        else:
-          spine_dist = abs(fy - 0.5 / gs) + 0.25 * abs(fx - mid_x)
-          parallel_len = horiz_len
-        candidates.append((
-            area < min_area,
-            spine_dist > band_half,
-            parallel_len < 1e-4,
-            round(spine_dist, 4),
-            -area,
-            f_idx,
-        ))
+      area2 = 0.0
+      vert_len = 0.0
+      horiz_len = 0.0
+      for i in range(face_len):
+        x1, y1 = vertices_2d[face[i]]
+        x2, y2 = vertices_2d[face[(i + 1) % face_len]]
+        area2 += x1 * y2 - x2 * y1
+        edx, edy = abs(x2 - x1), abs(y2 - y1)
+        if edx < 1e-4:
+          vert_len += edy
+        elif edy < 1e-4:
+          horiz_len += edx
+      area = abs(area2) * 0.5
+      if horiz_band:
+        spine_dist = abs(fx - 0.5 / gs) + 0.25 * abs(fy - mid_y)
+        parallel_len = vert_len
+      else:
+        spine_dist = abs(fy - 0.5 / gs) + 0.25 * abs(fx - mid_x)
+        parallel_len = horiz_len
+      candidates.append((
+          area < min_area,
+          spine_dist > band_half,
+          parallel_len < 1e-4,
+          round(spine_dist, 4),
+          -area,
+          f_idx,
+      ))
 
   if not candidates:
     return _select_centroid_face(vertices_2d, faces)
@@ -517,6 +544,36 @@ def _face_regions(
   return tuple(regions), tuple(faces_region)
 
 
+def _merged_interval_length(
+    intervals: Sequence[tuple[float, float]],
+) -> float:
+  """Returns union length of `[lo, hi]` intervals without double-counting."""
+  if not intervals:
+    return 0.0
+  ordered = sorted(intervals)
+  total = 0.0
+  cur_lo, cur_hi = ordered[0]
+  for nxt_lo, nxt_hi in ordered[1:]:
+    if nxt_lo <= cur_hi:
+      cur_hi = max(cur_hi, nxt_hi)
+    else:
+      total += cur_hi - cur_lo
+      cur_lo, cur_hi = nxt_lo, nxt_hi
+  return total + (cur_hi - cur_lo)
+
+
+# Both endpoints of a folded edge can shift by up to DEFAULT_TOLERANCE
+# during planar vertex snapping, giving a 2 * DEFAULT_TOLERANCE corridor.
+_BASE_EDGE_SNAP_TOL = 2.0 * crease_lib.DEFAULT_TOLERANCE
+# Minimum |cos(theta)| (~16.3 deg) between a mesh edge and a candidate base
+# crease; sits above cos(22.5 deg) ~= 0.924 so diagonal creases are rejected.
+_BASE_EDGE_MIN_COS = 0.96
+# Union overlap ratio required to classify an edge as a solved base crease,
+# with a 50% floor when endpoint snapping trims short edges by snap_tol.
+_BASE_EDGE_MIN_COVERAGE = 0.9
+_BASE_EDGE_SHORT_FLOOR = 0.5
+
+
 def _classify_base_edges(
     vertices_2d: Sequence[tuple[float, float]],
     edges: Sequence[tuple[int, int]],
@@ -524,40 +581,87 @@ def _classify_base_edges(
     base: cp_lib.CreasePattern,
 ) -> tuple[tuple[bool, ...], tuple[float, ...]]:
   """Flags shaping-added edges and extracts signed solved-base fold angles."""
-  base_mountains = crease_lib.CreaseBBoxIndex()
-  base_valleys = crease_lib.CreaseBBoxIndex()
+  base_index = crease_lib.CreaseBBoxIndex()
+  base_geom: dict[
+      int, tuple[float, float, float, float, float, float, bool]
+  ] = {}
   for crease_line in base.creases:
     assignment, _ = fold_3d.crease_assignment_and_angle(
         crease_line.fold, crease_line.fold_percent
     )
-    if assignment == 'M':
-      base_mountains.add(crease_line)
-    elif assignment == 'V':
-      base_valleys.add(crease_line)
+    if assignment not in ('M', 'V'):
+      continue
+    bx1, by1 = float(crease_line.p1.x), float(crease_line.p1.y)
+    bx2, by2 = float(crease_line.p2.x), float(crease_line.p2.y)
+    blen = math.hypot(bx2 - bx1, by2 - by1)
+    if blen <= 1e-9:
+      continue
+    base_index.add(crease_line)
+    base_geom[id(crease_line)] = (
+        bx1,
+        by1,
+        bx2,
+        by2,
+        (bx2 - bx1) / blen,
+        (by2 - by1) / blen,
+        assignment == 'M',
+    )
 
-  def paper_point(vertex: int) -> point_lib.Point:
-    x, y = vertices_2d[vertex]
-    return point_lib.Point(x=x + 0.5, y=y + 0.5)
-
+  snap_tol = _BASE_EDGE_SNAP_TOL
   added: list[bool] = []
   base_angles: list[float] = []
   for (v1, v2), assignment in zip(edges, edges_assignment, strict=True):
-    p1, p2 = paper_point(v1), paper_point(v2)
-    if assignment == 'B' or p1.isclose(p2):
+    x1, y1 = vertices_2d[v1][0] + 0.5, vertices_2d[v1][1] + 0.5
+    x2, y2 = vertices_2d[v2][0] + 0.5, vertices_2d[v2][1] + 0.5
+    elen = math.hypot(x2 - x1, y2 - y1)
+    if assignment == 'B' or elen <= crease_lib.DEFAULT_TOLERANCE:
       added.append(False)
       base_angles.append(0.0)
       continue
-    # Only the geometry of the query crease matters, not its fold type.
-    edge_line = crease_lib.Crease(p1, p2, fold=crease_lib.Fold.MOUNTAIN)
-    if base_mountains.any_overlapping(edge_line):
-      base_angles.append(-180.0)
+    ex = (x2 - x1) / elen
+    ey = (y2 - y1) / elen
+    candidates = base_index.query_bbox(
+        min(x1, x2),
+        min(y1, y2),
+        max(x1, x2),
+        max(y1, y2),
+        pad=snap_tol,
+    )
+    all_intervals: list[tuple[float, float]] = []
+    m_intervals: list[tuple[float, float]] = []
+    v_intervals: list[tuple[float, float]] = []
+    for cand in candidates:
+      bx1, by1, bx2, by2, ux, uy, is_m = base_geom[id(cand)]
+      if abs((x1 - bx1) * uy - (y1 - by1) * ux) > snap_tol:
+        continue
+      if abs((x2 - bx1) * uy - (y2 - by1) * ux) > snap_tol:
+        continue
+      if abs(ex * ux + ey * uy) < _BASE_EDGE_MIN_COS:
+        continue
+      s1 = (bx1 - x1) * ex + (by1 - y1) * ey
+      s2 = (bx2 - x1) * ex + (by2 - y1) * ey
+      lo = max(0.0, min(s1, s2))
+      hi = min(elen, max(s1, s2))
+      if hi > lo:
+        all_intervals.append((lo, hi))
+        if is_m:
+          m_intervals.append((lo, hi))
+        else:
+          v_intervals.append((lo, hi))
+
+    covered = _merged_interval_length(all_intervals)
+    min_required = min(
+        _BASE_EDGE_MIN_COVERAGE * elen,
+        max(_BASE_EDGE_SHORT_FLOOR * elen, elen - snap_tol),
+    )
+    if covered >= min_required:
+      m_cov = _merged_interval_length(m_intervals)
+      v_cov = _merged_interval_length(v_intervals)
       added.append(False)
-    elif base_valleys.any_overlapping(edge_line):
-      base_angles.append(180.0)
-      added.append(False)
+      base_angles.append(-180.0 if m_cov >= v_cov else 180.0)
     else:
-      base_angles.append(0.0)
       added.append(assignment in ('M', 'V'))
+      base_angles.append(0.0)
   return tuple(added), tuple(base_angles)
 
 
@@ -700,8 +804,10 @@ def mesh_to_fold_dict(mesh: FoldedMesh3D, title: str) -> dict[str, Any]:
       index into `file_bp:regions` for the region containing each face centroid,
       or `None`. Present whenever `file_bp:regions` is present.
     - `edges_bp:shaping` (`list[bool]`): parallel to `edges_vertices`; `True`
-      for mountain/valley edges added by shaping (not overlapping any folded
-      crease of `solved.creases`). Present when built from a
+      for mountain/valley edges added by shaping (edges not covered to at least
+      90% of their length, or `max(50%, len - 2 * DEFAULT_TOLERANCE)` on short
+      snapped segments, by aligned folded creases of `solved.creases` within
+      `2 * DEFAULT_TOLERANCE`). Present when built from a
       `ShapedCreasePattern` (`mesh.edges_shaping` non-empty).
     - `edges_bp:baseFoldAngle` (`list[float]`): parallel to `edges_vertices`;
       signed fold angle in degrees (`-180.0`, `0.0`, or `180.0`) of each edge in

@@ -170,6 +170,111 @@ class MeshToFoldDictTest(absltest.TestCase):
     self.assertEqual(added, (False, False, True, False, False))
     self.assertEqual(base_angles, (-180.0, 180.0, 0.0, 0.0, 0.0))
 
+  def test_classify_base_edges_keeps_snapped_subsegments_and_dedups_overlaps(
+      self,
+  ):
+    base_cp = cp_lib.CreasePattern(
+        [
+            crease_lib.Crease(
+                point_lib.Point(x=0.75, y=0.0),
+                point_lib.Point(x=0.75, y=0.5),
+                fold=crease_lib.Fold.MOUNTAIN,
+            ),
+            crease_lib.Crease(
+                point_lib.Point(x=0.75, y=0.5),
+                point_lib.Point(x=0.75, y=1.0),
+                fold=crease_lib.Fold.MOUNTAIN,
+            ),
+            # Duplicate half-segment on `x = 0.25`: must not double-count to
+            # cover `[0.0, 1.0]`.
+            crease_lib.Crease(
+                point_lib.Point(x=0.25, y=0.0),
+                point_lib.Point(x=0.25, y=0.5),
+                fold=crease_lib.Fold.VALLEY,
+            ),
+            crease_lib.Crease(
+                point_lib.Point(x=0.25, y=0.0),
+                point_lib.Point(x=0.25, y=0.45),
+                fold=crease_lib.Fold.VALLEY,
+            ),
+        ],
+        grid_size=28,
+    )
+    vertices_2d = [
+        (0.25, -0.10),
+        (0.2504, -0.05),
+        (0.25, 0.10),
+        (0.10, 0.0),
+        (0.25, 0.0),
+        (-0.25, -0.5),
+        (-0.25, 0.5),
+    ]
+    edges = [(0, 1), (0, 2), (3, 4), (5, 6)]
+    assignments = ['V', 'M', 'V', 'V']
+    added, base_angles = render_3d._classify_base_edges(  # pylint: disable=protected-access
+        vertices_2d, edges, assignments, base_cp
+    )
+    self.assertEqual(added, (False, False, True, True))
+    self.assertEqual(base_angles, (-180.0, -180.0, 0.0, 0.0))
+
+  def test_candidate_root_rects_prefers_root_flap_when_root_is_leaf(self):
+    tree = {
+        'name': 'bridge_twins',
+        'category': 'humans',
+        'complexity': 1,
+        'root': 'bridge',
+        'children': [
+            {
+                'name': 'bridge',
+                'start': 'j0',
+                'end': 'j_top',
+                'azimuth_angle': 0,
+                'elevation_angle': 0,
+                'length': 1,
+                'width': 2,
+            },
+            {
+                'name': 'arm_l',
+                'start': 'j0',
+                'end': 'j_l',
+                'azimuth_angle': 90,
+                'elevation_angle': 0,
+                'length': 2,
+                'width': 1,
+            },
+            {
+                'name': 'hand_l',
+                'start': 'j_l',
+                'end': 'j_hl',
+                'azimuth_angle': 90,
+                'elevation_angle': -45,
+                'length': 2,
+                'width': 1,
+            },
+            {
+                'name': 'arm_r',
+                'start': 'j0',
+                'end': 'j_r',
+                'azimuth_angle': -90,
+                'elevation_angle': 0,
+                'length': 2,
+                'width': 1,
+            },
+            {
+                'name': 'hand_r',
+                'start': 'j_r',
+                'end': 'j_hr',
+                'azimuth_angle': -90,
+                'elevation_angle': -45,
+                'length': 2,
+                'width': 1,
+            },
+        ],
+    }
+    packed = bp.pack(bp.prepare(tree))
+    rects = render_3d._candidate_root_rects(packed)  # pylint: disable=protected-access
+    self.assertEqual(rects, [packed.flaps['bridge'].rect])
+
 
 def _total_length(fold, edge_mask):
   """Returns the summed flat length of the edges selected by `edge_mask`."""

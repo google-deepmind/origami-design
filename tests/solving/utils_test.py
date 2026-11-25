@@ -20,7 +20,9 @@ import math
 from absl.testing import absltest
 from absl.testing import parameterized
 from bp_pipeline.crease_pattern import crease
+from bp_pipeline.crease_pattern import point
 from bp_pipeline.crease_pattern.parser import svg
+from bp_pipeline.solving import utils as solving_utils
 
 
 class UtilsTest(parameterized.TestCase):
@@ -95,6 +97,35 @@ class UtilsTest(parameterized.TestCase):
       )
       self.assertIsNotNone(match_idx, msg=f'Unmatched crease: {c}')
       remaining.pop(match_idx)
+
+  def test_deduplicate_and_creases_to_paths_preserve_input_order(self):
+    c1 = crease.Crease(
+        point.Point(x=0.0, y=0.25),
+        point.Point(x=0.5, y=0.25),
+        fold=crease.Fold.MOUNTAIN,
+    )
+    c2 = crease.Crease(
+        point.Point(x=0.25, y=0.0),
+        point.Point(x=0.25, y=0.5),
+        fold=crease.Fold.MOUNTAIN,
+    )
+    c3 = crease.Crease(
+        point.Point(x=0.5, y=0.25),
+        point.Point(x=1.0, y=0.25),
+        fold=crease.Fold.MOUNTAIN,
+    )
+    deduped = solving_utils.deduplicate([c1, c2, c1, c3])
+    self.assertEqual([c.exact_match for c in deduped], [
+        c1.exact_match,
+        c2.exact_match,
+        c3.exact_match,
+    ])
+    paths = solving_utils.creases_to_paths(deduped)
+    self.assertLen(paths, 2)
+    self.assertEqual(
+        [c.exact_match for c in paths[0]], [c1.exact_match, c3.exact_match]
+    )
+    self.assertEqual([c.exact_match for c in paths[1]], [c2.exact_match])
 
 
 if __name__ == '__main__':

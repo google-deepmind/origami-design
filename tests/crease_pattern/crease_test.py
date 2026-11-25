@@ -1690,6 +1690,34 @@ class FastMergeCreasesTest(parameterized.TestCase):
     for got, exp in zip(kept, expected_merged, strict=True):
       self.assertEqual(got, exp)
 
+  def test_crease_bbox_index_query_bbox_deduplicates_and_respects_pad(self):
+    multi_cell = crease.Crease(
+        point.Point(x=0.1, y=0.1),
+        point.Point(x=0.4, y=0.4),
+        fold=crease.Fold.MOUNTAIN,
+    )
+    near_edge = crease.Crease(
+        point.Point(x=0.5015, y=0.2),
+        point.Point(x=0.5015, y=0.3),
+        fold=crease.Fold.VALLEY,
+    )
+    far_away = crease.Crease(
+        point.Point(x=0.8, y=0.8),
+        point.Point(x=0.9, y=0.9),
+        fold=crease.Fold.MOUNTAIN,
+    )
+    index = crease.CreaseBBoxIndex()
+    for c in (multi_cell, near_edge, far_away):
+      index.add(c)
+
+    default_hits = index.query_bbox(0.2, 0.2, 0.5, 0.5)
+    self.assertEqual([id(c) for c in default_hits], [id(multi_cell)])
+
+    padded_hits = index.query_bbox(0.2, 0.2, 0.5, 0.5, pad=0.002)
+    self.assertEqual(
+        [id(c) for c in padded_hits], [id(multi_cell), id(near_edge)]
+    )
+
 
 if __name__ == '__main__':
   absltest.main()

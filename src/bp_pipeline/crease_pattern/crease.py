@@ -423,6 +423,54 @@ class CreaseBBoxIndex:
             return True
     return False
 
+  def query_bbox(
+      self,
+      xmin: float,
+      ymin: float,
+      xmax: float,
+      ymax: float,
+      pad: float = DEFAULT_TOLERANCE,
+  ) -> list['Crease']:
+    """Returns unique indexed creases overlapping a padded bounding box.
+
+    Args:
+      xmin: Minimum x-coordinate of the query box.
+      ymin: Minimum y-coordinate of the query box.
+      xmax: Maximum x-coordinate of the query box.
+      ymax: Maximum y-coordinate of the query box.
+      pad: Bounding-box expansion margin on each side.
+
+    Returns:
+      Unique indexed `Crease` objects whose axis-aligned bounding boxes overlap
+      `[xmin - pad, xmax + pad] x [ymin - pad, ymax + pad]`.
+    """
+    cell_pad = pad + 1e-6
+    ix0, ix1, iy0, iy1 = self._cell_range(
+        xmin - cell_pad, ymin - cell_pad, xmax + cell_pad, ymax + cell_pad
+    )
+    buckets = self._buckets
+    seen: set[int] = set()
+    hits: list['Crease'] = []
+    for ix in range(ix0, ix1 + 1):
+      for iy in range(iy0, iy1 + 1):
+        cell = buckets.get((ix, iy))
+        if not cell:
+          continue
+        for _, _, _, _, oxmin, oymin, oxmax, oymax, other in cell:
+          oid = id(other)
+          if oid in seen:
+            continue
+          seen.add(oid)
+          if (
+              xmax < oxmin - pad
+              or xmin > oxmax + pad
+              or ymax < oymin - pad
+              or ymin > oymax + pad
+          ):
+            continue
+          hits.append(other)
+    return hits
+
   def collect_split_ts(self, c: 'Crease', tolerance: float) -> list[float]:
     """Collects strict interior intersection parameters along `c`."""
     p1 = c.p1

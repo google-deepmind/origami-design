@@ -220,6 +220,7 @@ def run_pipeline(
     render_visuals: bool = True,
     use_sweep_fallback: bool = True,
     shaped_global_ff_timeout: float | None = 15.0,
+    remove_central_crease: bool = False,
 ) -> dict[str, Any]:
   """Validates, packs, solves, shapes, and renders a StickFigure design.
 
@@ -251,6 +252,8 @@ def run_pipeline(
       solving fails or is not globally flat-foldable.
     shaped_global_ff_timeout: Timeout in seconds for post-shaping global
       flat-foldability verification (`None` disables).
+    remove_central_crease: If True, remove the central symmetry crease during
+      solving so centerline flaps remain open across the symmetry axis.
 
   Returns:
     A structured JSON-serializable report dictionary.
@@ -270,9 +273,10 @@ def run_pipeline(
       'artifacts': {},
   }
 
-  has_shaping_flaps = any(
+  raw_children = data.get('children')
+  has_shaping_flaps = isinstance(raw_children, list) and any(
       bool(c.get('shaping_flap'))
-      for c in data.get('children', ())
+      for c in raw_children
       if isinstance(c, Mapping)
   )
   errors = graph_checks.prevalidate(
@@ -384,7 +388,7 @@ def run_pipeline(
         max_steps=max_steps,
         max_time_limit=60.0,
         hinges_from_stick_figure=True,
-        remove_central_crease=False,
+        remove_central_crease=remove_central_crease,
         up_down_method='flaps_down',
     )
     try:
@@ -675,6 +679,13 @@ def _build_argument_parser() -> argparse.ArgumentParser:
       dest='check_symmetry',
       action='store_true',
       help='Require bilateral symmetry across the YZ plane.',
+  )
+  parser.add_argument(
+      '--remove-central-crease',
+      '--remove_central_crease',
+      dest='remove_central_crease',
+      action='store_true',
+      help='Remove the central symmetry crease during flat-foldable solving.',
   )
   parser.add_argument(
       '--max-retries',
@@ -1215,6 +1226,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             run_shape=run_shape,
             render_visuals=render_visuals,
             shaped_global_ff_timeout=ff_timeout,
+            remove_central_crease=args.remove_central_crease,
         )
         batch_reports[json_file.name] = rep
         summary_file.write_text(
@@ -1248,6 +1260,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         run_shape=run_shape,
         render_visuals=render_visuals,
         shaped_global_ff_timeout=ff_timeout,
+        remove_central_crease=args.remove_central_crease,
     )
   finally:
     for log_target in filtered_targets:

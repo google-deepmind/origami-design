@@ -15,7 +15,7 @@
 
 """Utility functions for box pleating."""
 
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 import dataclasses
 import functools
 
@@ -200,11 +200,8 @@ class LineOverlapIndex:
 
 
 def deduplicate(creases: list[crease.Crease]) -> list[crease.Crease]:
-  """Removes duplicate creases using CreaseWithExactMatch __eq__."""
-  return [
-      c.crease
-      for c in crease.Creases.create_from_creases(creases=creases).creases
-  ]
+  """Removes duplicate creases while preserving first-seen order."""
+  return [c.crease for c in dict.fromkeys(cr.exact_match for cr in creases)]
 
 
 def get_interesecting_non_overlapping_creases(
@@ -402,27 +399,24 @@ def creases_to_paths(creases: list[crease.Crease]) -> list[list[crease.Crease]]:
   Returns:
     list[list[crease.Crease]]
   """
-  connectivity_graph = {crease_.hash_value: set() for crease_ in creases}
   n = len(creases)
+  connectivity_graph: dict[int, list[int]] = {i: [] for i in range(n)}
   for i in range(n):
     c1 = creases[i]
     for j in range(i + 1, n):
       if c1.intersect_at_tip(creases[j]):
-        h_i = c1.hash_value
-        h_j = creases[j].hash_value
-        connectivity_graph[h_i].add(h_j)
-        connectivity_graph[h_j].add(h_i)
+        connectivity_graph[i].append(j)
+        connectivity_graph[j].append(i)
 
-  components_hashes = find_connected_components(connectivity_graph)
-  hash_to_crease = {c.hash_value: c for c in creases}
-  paths = []
-  for component in components_hashes:
-    path = [hash_to_crease[h] for h in component]
-    paths.append(path)
-  return paths
+  components_indices = find_connected_components(connectivity_graph)
+  return [
+      [creases[idx] for idx in component] for component in components_indices
+  ]
 
 
-def find_connected_components(graph: dict[int, set[int]]) -> list[list[int]]:
+def find_connected_components(
+    graph: Mapping[int, Collection[int]],
+) -> list[list[int]]:
   """Finds all connected components in a graph.
 
   This function uses a traversal-based approach (iterative DFS) to discover

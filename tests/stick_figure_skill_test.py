@@ -229,6 +229,36 @@ class StickFigureSkillTest(parameterized.TestCase):
     self.assertNotEmpty(report['validation_errors'])
     self.assertIsNone(report['packing'])
 
+    for malformed_children in (None, 42):
+      malformed_data = dict(bad_data, children=malformed_children)
+      malformed_report = cli_lib.run_pipeline(malformed_data)
+      self.assertFalse(malformed_report['valid'])
+      self.assertIn(
+          'Stick figure children must be a list.',
+          malformed_report['validation_errors'],
+      )
+      self.assertIsNone(malformed_report['packing'])
+
+  def test_cli_remove_central_crease_flag_parsing(self):
+    parser = cli_lib._build_argument_parser()  # pylint: disable=protected-access
+    self.assertFalse(parser.parse_args(['cat']).remove_central_crease)
+    self.assertTrue(
+        parser.parse_args(['cat', '--remove-central-crease'])
+        .remove_central_crease
+    )
+    self.assertTrue(
+        parser.parse_args(['cat', '--remove_central_crease'])
+        .remove_central_crease
+    )
+    report = cli_lib.run_pipeline(
+        'cat',
+        remove_central_crease=True,
+        run_shape=False,
+        render_visuals=False,
+    )
+    self.assertTrue(report['valid'])
+    self.assertTrue(report['solving']['success'])
+
   def test_missing_start_end_and_asymmetric_diagnostics(self):
     missing_joints = {
         'name': 'missing_joints',
