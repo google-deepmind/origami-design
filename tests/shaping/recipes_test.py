@@ -247,7 +247,7 @@ class PoseConfigAndPlanTest(parameterized.TestCase):
             'elevation_angle': 10.0,
             'length': 2,
             'width': 2.0,
-            'shaping_flap': True,
+            'shaping_flap': False,
         },
         {
             'name': 'claw_right',
@@ -257,6 +257,16 @@ class PoseConfigAndPlanTest(parameterized.TestCase):
             'elevation_angle': 10.0,
             'length': 2,
             'width': 2.0,
+            'shaping_flap': False,
+        },
+        {
+            'name': 'dorsal_plate',
+            'start': 'tail_mid',
+            'end': 'dorsal_plate_tip',
+            'azimuth_angle': 180.0,
+            'elevation_angle': 80.0,
+            'length': 1,
+            'width': 1.0,
             'shaping_flap': True,
         },
     ])
@@ -264,6 +274,94 @@ class PoseConfigAndPlanTest(parameterized.TestCase):
     plans = {p.name: p for p in recipes.pose_plan(state.replace(tree=aug_tree))}
     self.assertEqual(plans['tail_stinger'].role, recipes.ROLE_TIP_DOWN)
     self.assertEqual(plans['claw_left'].role, recipes.ROLE_WIDE_TIP)
+    self.assertEqual(plans['dorsal_plate'].role, recipes.ROLE_SKIP)
+    self.assertEqual(
+        plans['dorsal_plate'].recommended_tools, ('shape_flap_template',)
+    )
+
+    # `figure_pose` excludes `shaping_flap` sticks from `rotation_3d` targets.
+    asym_knee = bp.StickFigure.from_dict({
+        'name': 'asym_knee_pose_fixture',
+        'category': 'animals',
+        'complexity': 1,
+        'root': 'hub_arm',
+        'children': [
+            {
+                'name': 'hub_arm',
+                'start': 'j_hub',
+                'end': 'j_k',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': 30.0,
+                'elevation_angle': -10.0,
+                'shaping_flap': False,
+            },
+            {
+                'name': 'tip',
+                'start': 'j_k',
+                'end': 'j_tip',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': 40.0,
+                'elevation_angle': -45.0,
+                'shaping_flap': False,
+            },
+            {
+                'name': 'cap',
+                'start': 'j_k',
+                'end': 'j_cap',
+                'length': 1,
+                'width': 1,
+                'azimuth_angle': 15.0,
+                'elevation_angle': 35.0,
+                'shaping_flap': True,
+            },
+            {
+                'name': 'leg_a',
+                'start': 'j_hub',
+                'end': 'j_la',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': 150.0,
+                'elevation_angle': -50.0,
+                'shaping_flap': False,
+            },
+            {
+                'name': 'leg_b',
+                'start': 'j_hub',
+                'end': 'j_lb',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': -130.0,
+                'elevation_angle': -50.0,
+                'shaping_flap': False,
+            },
+        ],
+    })
+    asym_packed = bp.pack(
+        bp.prepare(asym_knee),
+        bp.PackingTaskConfig(
+            max_retries=4, max_cps_per_grid_size=1, max_number_of_cps=1
+        ),
+    )
+    asym_solved = bp.solve_best(
+        asym_packed,
+        bp.SolverConfig(
+            check_global_flat_foldability=True,
+            max_number_of_cps=1,
+            max_time_limit=10.0,
+        ),
+    )
+    asym_posed, _ = recipes.figure_pose(
+        toolbox.ShapingState.from_solved(asym_solved), feedback_rounds=0
+    )
+    rotated_elements: set[str] = set()
+    for entry in asym_posed.history:
+      if entry.get('tool') == 'rotation_3d':
+        for rot in entry.get('arguments', {}).get('rotations', ()):
+          rotated_elements.add(rot['element_name'])
+    self.assertNotEmpty(rotated_elements)
+    self.assertNotIn('cap', rotated_elements)
 
     quad = _state('quadruped_fixture')
     bias_tree = quad.tree.update_tree(

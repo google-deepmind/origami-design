@@ -1,6 +1,6 @@
 # Shaping Actuator Toolbox Reference
 
-All 20 tools returned by `bp.list_shaping_tools()` can be called via
+All 21 tools returned by `bp.list_shaping_tools()` can be called via
 `bp.apply_shaping_tool(state, name, arguments)`,
 `bp.apply_shaping_tools(state, calls)`, `bp-pipeline actuate`, or as keyword
 functions on `bp_pipeline.shaping.toolbox`.
@@ -248,3 +248,26 @@ creases.
 - `position_percent: float = 0.5` — Relative slot position in `[0, 1]`.
 - `direction: str = 'auto'` — `'auto'`, `'up'`, or `'down'`.
 - `verify_fold: bool = True`
+
+### `shape_flap_template`
+
+Applies a single deterministic sculpting operation to auxiliary
+`shaping_flap: true` pockets packed by `TailTemplate` or `KneeTemplate` without
+posing or bending non-shaping sticks (`shaping_flap` sticks carry no pose target
+and no fidelity term).
+
+- `element_name: str = ''` — Optional template stick name (plus its mirror
+  partner when symmetric); naming a `TailTemplate` connecting river or
+  `tip_flap` selects the whole tail, and naming a `KneeTemplate` normal flap or
+  river selects that knee (plus its mirror partner). Empty targets all template
+  `shaping_flap` sticks.
+- `style: str = 'armor'` — `'armor'`
+  (`open_flap(fold_percent=open_percent, ridge_only=False)`), `'taper'`
+  (`narrow_central_flap` on central tail blades spanning `x = 0.5`
+  (`contains_central_crease`) with `length >= 2` when `central_crease_removed`
+  is True, or width-halving `simple_fold` on length-1, off-axis, or split
+  blades), or `'tuck'` (width-halving `simple_fold`).
+- `open_percent: float = 0.45` — `fold_percent` in `(0, 1)` forwarded to
+  `open_flap` for `'armor'` (smaller values open the flap wider).
+- `verify_fold: bool = True` — Require clean 3D folding
+  (`vertex_error <= MAX_RENDERABLE_VERTEX_ERROR`, `1.0%`).

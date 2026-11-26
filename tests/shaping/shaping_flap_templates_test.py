@@ -16,8 +16,11 @@
 """Tests for composable shaping-flap packing templates."""
 
 import copy
+import functools
+import json
 import time
 from typing import Any
+from unittest import mock
 
 from absl.testing import absltest
 import bp_pipeline as bp
@@ -26,6 +29,9 @@ from bp_pipeline.packing import scoring
 from bp_pipeline.packing import shaping_flap_templates as sft
 from bp_pipeline.packing import types as packing_types
 from bp_pipeline.packing.debug import debug_types
+from bp_pipeline.shaping import recipes
+from bp_pipeline.shaping import state as state_lib
+from bp_pipeline.shaping import toolbox
 from bp_pipeline.solving import hinges
 from bp_pipeline.stick_figures import graph_checks
 from bp_pipeline.stick_figures import stick_figure as sf_lib
@@ -324,6 +330,28 @@ def _composable_knee_and_tail_dict() -> dict[str, Any]:
           },
       ],
   }
+
+
+@functools.lru_cache(maxsize=1)
+def _solved_composable_knee_and_tail() -> bp.SolvedCreasePattern:
+  design = bp.prepare(_composable_knee_and_tail_dict())
+  packed = bp.pack(
+      design,
+      bp.PackingTaskConfig(
+          packer='builtin',
+          max_retries=6,
+          max_cps_per_grid_size=2,
+          max_number_of_cps=2,
+      ),
+  )
+  return bp.solve_best(
+      packed,
+      bp.SolverConfig(
+          check_global_flat_foldability=True,
+          max_number_of_cps=1,
+          max_time_limit=20.0,
+      ),
+  )
 
 
 def _assert_globally_flat_foldable(
@@ -826,24 +854,305 @@ class ShapingFlapTemplatesTest(absltest.TestCase):
     self.assertEqual(knees[0].inner_size('Wide'), (4, 2))
     self.assertEqual(knees[0].total_size('Wide'), (6, 4))
 
-    packed = bp.pack(
-        design,
+    solved = _solved_composable_knee_and_tail()
+    _assert_globally_flat_foldable(self, solved)
+
+  def test_shape_flap_template_selective_armor_and_probe(self):
+    state = bp.ShapingState.from_solved(_solved_composable_knee_and_tail())
+
+    # Probe advertises shape_flap_template only on template shaping_flap sticks
+    # (not ordinary sticks or orphan shaping_flap sticks).
+    probed = bp.probe_shaping(state, ['knee_cap_l', 'tail_sf1', 'shin_l'])
+    self.assertIn(
+        'shape_flap_template', probed['knee_cap_l']['available_tools']
+    )
+    self.assertIn('shape_flap_template', probed['tail_sf1']['available_tools'])
+    self.assertNotIn('shape_flap_template', probed['shin_l']['available_tools'])
+
+    orphan_tree_dict = state.tree.to_dict()
+    for st in orphan_tree_dict['children']:
+      if st['name'] in ('leg_l', 'leg_r'):
+        st['shaping_flap'] = True
+    orphan_state = state.replace(
+        tree=sf_lib.StickFigure.from_dict(orphan_tree_dict)
+    )
+    orphan_probed = bp.probe_shaping(orphan_state, ['leg_l', 'knee_cap_l'])
+    self.assertNotIn(
+        'shape_flap_template', orphan_probed['leg_l']['available_tools']
+    )
+    self.assertIn(
+        'shape_flap_template', orphan_probed['knee_cap_l']['available_tools']
+    )
+
+    # Selective targeting on knee_cap_l mirrors to knee_cap_r, skips tail_sf*,
+    # keeps `arguments` pure input kwargs, and leaves non-shaping limbs intact.
+    shin_before = state.element('shin_l').creases
+    sel_state, sel_res = bp.apply_shaping_tool(
+        state,
+        'shape_flap_template',
+        {'element_name': 'knee_cap_l', 'style': 'armor', 'open_percent': 0.4},
+    )
+    self.assertTrue(sel_res.ok, msg=sel_res.message)
+    self.assertEqual(
+        set(sel_res.arguments),
+        {'element_name', 'style', 'open_percent', 'verify_fold'},
+    )
+    self.assertIn('knee_cap_l=open_flap', sel_res.message)
+    self.assertIn('knee_cap_r=open_flap', sel_res.message)
+    self.assertIn('skipped: tail_sf0, tail_sf1', sel_res.message)
+    self.assertEqual(sel_state.element('shin_l').creases, shin_before)
+
+    # Group selection on a tail connecting river with `style='armor'` opens
+    # every tail shaping flap while skipping knee templates.
+    _, armor_tail_res = bp.apply_shaping_tool(
+        state,
+        'shape_flap_template',
+        {
+            'element_name': 'tail_r1',
+            'style': 'armor',
+            'open_percent': 0.5,
+            'verify_fold': False,
+        },
+    )
+    self.assertTrue(armor_tail_res.ok, msg=armor_tail_res.message)
+    self.assertIn('tail_sf1=open_flap', armor_tail_res.message)
+    self.assertIn('tail_sf0=open_flap', armor_tail_res.message)
+    self.assertIn('skipped: knee_cap_l, knee_cap_r', armor_tail_res.message)
+
+  def test_shape_flap_template_tuck_replay_and_pose_exclusions(self):
+    state = bp.ShapingState.from_solved(_solved_composable_knee_and_tail())
+    shin_before = state.element('shin_l').creases
+
+    tuck_state, tuck_res = bp.apply_shaping_tool(
+        state, 'shape_flap_template', {'style': 'tuck'}
+    )
+    self.assertTrue(tuck_res.ok, msg=tuck_res.message)
+    for sf_name in ('tail_sf1', 'tail_sf0', 'knee_cap_l', 'knee_cap_r'):
+      self.assertIn(f'{sf_name}=simple_fold', tuck_res.message)
+    self.assertNotIn('skipped:', tuck_res.message)
+    self.assertEqual(tuck_state.element('shin_l').creases, shin_before)
+    self.assertLen(tuck_state.history, 1)
+
+    replayed_state, replayed_results = bp.apply_shaping_tools(
+        state, json.loads(toolbox.history_json(tuck_state))
+    )
+    self.assertTrue(all(r.ok for r in replayed_results))
+    self.assertEqual(
+        state_lib.crease_multiset(replayed_state.pattern),
+        state_lib.crease_multiset(tuck_state.pattern),
+    )
+
+    # Default automatic `bp.pose` never invokes `shape_flap_template`, and
+    # `measured_directions` excludes shaping flaps from `side_crossings` and
+    # `direction_error_deg` while keeping raw `directions`.
+    posed, _ = recipes.pose_state(
+        state,
+        bp.PoseConfig(mode='figure', feedback_rounds=0),
+    )
+    used_tools = [entry.get('tool') for entry in posed.history]
+    self.assertNotIn('shape_flap_template', used_tools)
+    rep, dirs = toolbox.measured_directions(posed)
+    sf_names = {'knee_cap_l', 'knee_cap_r', 'tail_sf0', 'tail_sf1'}
+    self.assertTrue(sf_names.issubset(dirs))
+    self.assertEmpty(sf_names & set(rep['direction_error_deg']))
+    crossing_names = {c['stick'] for c in rep.get('side_crossings', ())}
+    self.assertEmpty(sf_names & crossing_names)
+
+  def test_shape_flap_template_taper_and_validation_errors(self):
+    state = bp.ShapingState.from_solved(_solved_composable_knee_and_tail())
+
+    # `taper` on an open central spine uses narrow_central_flap when the
+    # central blade spans `x = 0.5` with `length >= 2`, and falls back to
+    # simple_fold(narrow=True) on length-1, split-spine, or off-axis blades.
+    tip_dict = _tipped_tail_animal_dict()
+    for st in tip_dict['children']:
+      if st['name'] == 'tail_sf1':
+        st['length'] = 2
+    tip_design = bp.prepare(tip_dict)
+    tip_packed = bp.pack(
+        tip_design,
         bp.PackingTaskConfig(
             packer='builtin',
             max_retries=6,
-            max_cps_per_grid_size=2,
-            max_number_of_cps=2,
+            max_cps_per_grid_size=1,
+            max_number_of_cps=1,
         ),
     )
-    solved = bp.solve_best(
-        packed,
+    tip_solved = bp.solve_best(
+        tip_packed,
+        bp.SolverConfig(
+            check_global_flat_foldability=True,
+            remove_central_crease=True,
+            max_number_of_cps=1,
+            max_time_limit=15.0,
+        ),
+    )
+    tip_state = bp.ShapingState.from_solved(tip_solved)
+    _, taper_res = bp.apply_shaping_tool(
+        tip_state, 'shape_flap_template', {'style': 'taper'}
+    )
+    self.assertTrue(taper_res.ok, msg=taper_res.message)
+    self.assertIn('tail_sf1=narrow_central_flap', taper_res.message)
+    self.assertIn('tail_sf0=simple_fold', taper_res.message)
+
+    _, split_taper_res = bp.apply_shaping_tool(
+        state,
+        'shape_flap_template',
+        {'element_name': 'tail_sf1', 'style': 'taper', 'verify_fold': False},
+    )
+    self.assertTrue(split_taper_res.ok, msg=split_taper_res.message)
+    self.assertIn('tail_sf1=simple_fold', split_taper_res.message)
+
+    with mock.patch.object(state_lib, 'element_spans_axis', return_value=False):
+      _, off_axis_res = bp.apply_shaping_tool(
+          tip_state,
+          'shape_flap_template',
+          {'element_name': 'tail_sf1', 'style': 'taper', 'verify_fold': False},
+      )
+    self.assertFalse(off_axis_res.ok)
+    self.assertIn('simple_fold', off_axis_res.message)
+
+    # Invalid inputs and `apply_symmetric(tool='shape_flap_template')` fail.
+    _, bad_style = bp.apply_shaping_tool(
+        state, 'shape_flap_template', {'style': 'unknown'}
+    )
+    self.assertFalse(bad_style.ok)
+    _, bad_pct = bp.apply_shaping_tool(
+        state, 'shape_flap_template', {'open_percent': 1.0}
+    )
+    self.assertFalse(bad_pct.ok)
+    _, bad_elem = bp.apply_shaping_tool(
+        state, 'shape_flap_template', {'element_name': 'head'}
+    )
+    self.assertFalse(bad_elem.ok)
+    _, bad_kwarg = bp.apply_shaping_tool(
+        state, 'shape_flap_template', {'applied_operations': {'bogus': 'x'}}
+    )
+    self.assertFalse(bad_kwarg.ok)
+    _, bad_sym = bp.apply_shaping_tool(
+        state,
+        'apply_symmetric',
+        {
+            'tool': 'shape_flap_template',
+            'element_name': 'knee_cap_l',
+            'arguments': {'style': 'tuck', 'verify_fold': False},
+        },
+    )
+    self.assertFalse(bad_sym.ok)
+
+    # Mirrored KneeTemplate failure surfaces the inner `verify_3d_fold` reason
+    # and names both symmetric shaping flaps.
+    with mock.patch.object(
+        state_lib,
+        'verify_3d_fold',
+        return_value=(False, 'simulated 3D strain 1.8%', None),
+    ):
+      _, sym_fail_res = bp.apply_shaping_tool(
+          state,
+          'shape_flap_template',
+          {'element_name': 'knee_cap_l', 'style': 'tuck', 'verify_fold': True},
+      )
+    self.assertFalse(sym_fail_res.ok)
+    self.assertIn('knee_cap_l', sym_fail_res.message)
+    self.assertIn('knee_cap_r', sym_fail_res.message)
+    self.assertIn('1.8%', sym_fail_res.message)
+
+    # Asymmetric single KneeTemplate (`len(group) == 1`) sculpts cleanly and
+    # surfaces single-flap failure reasons cleanly.
+    asym_knee = {
+        'name': 'asym_single_knee',
+        'category': 'animal',
+        'complexity': 1,
+        'root': 'hub_arm',
+        'children': [
+            {
+                'name': 'hub_arm',
+                'start': 'j_hub',
+                'end': 'j_k',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': 30.0,
+                'elevation_angle': -10.0,
+                'shaping_flap': False,
+            },
+            {
+                'name': 'tip',
+                'start': 'j_k',
+                'end': 'j_tip',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': 40.0,
+                'elevation_angle': -45.0,
+                'shaping_flap': False,
+            },
+            {
+                'name': 'cap',
+                'start': 'j_k',
+                'end': 'j_cap',
+                'length': 1,
+                'width': 1,
+                'azimuth_angle': 15.0,
+                'elevation_angle': 35.0,
+                'shaping_flap': True,
+            },
+            {
+                'name': 'leg_a',
+                'start': 'j_hub',
+                'end': 'j_la',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': 150.0,
+                'elevation_angle': -50.0,
+                'shaping_flap': False,
+            },
+            {
+                'name': 'leg_b',
+                'start': 'j_hub',
+                'end': 'j_lb',
+                'length': 2,
+                'width': 1,
+                'azimuth_angle': -130.0,
+                'elevation_angle': -50.0,
+                'shaping_flap': False,
+            },
+        ],
+    }
+    asym_packed = bp.pack(
+        bp.prepare(asym_knee),
+        bp.PackingTaskConfig(
+            packer='builtin',
+            max_retries=4,
+            max_cps_per_grid_size=1,
+            max_number_of_cps=1,
+        ),
+    )
+    asym_solved = bp.solve_best(
+        asym_packed,
         bp.SolverConfig(
             check_global_flat_foldability=True,
             max_number_of_cps=1,
-            max_time_limit=20.0,
+            max_time_limit=10.0,
         ),
     )
-    _assert_globally_flat_foldable(self, solved)
+    asym_state = bp.ShapingState.from_solved(asym_solved)
+    _, asym_ok = bp.apply_shaping_tool(
+        asym_state, 'shape_flap_template', {'style': 'tuck'}
+    )
+    self.assertTrue(asym_ok.ok, msg=asym_ok.message)
+    self.assertIn('cap=simple_fold', asym_ok.message)
+    with mock.patch.object(
+        state_lib,
+        'verify_3d_fold',
+        return_value=(False, 'simulated 3D strain 2.1%', None),
+    ):
+      _, asym_fail = bp.apply_shaping_tool(
+          asym_state,
+          'shape_flap_template',
+          {'style': 'tuck', 'verify_fold': True},
+      )
+    self.assertFalse(asym_fail.ok)
+    self.assertIn('cap', asym_fail.message)
+    self.assertIn('2.1%', asym_fail.message)
 
 
 if __name__ == '__main__':

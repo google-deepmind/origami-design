@@ -1258,6 +1258,7 @@ def measured_directions(
       name: info['error']
       for name, info in directions.items()
       if info['error'] is not None
+      and not (name in state.tree and state.tree[name].shaping_flap)
   }
   updated['direction_frame'] = measured['frame']
   if 'side_crossings' in measured:

@@ -307,6 +307,7 @@ def measure(
               'distal': topo.distal[name],
               'parent': topo.parent[name],
               'is_river': bool(tree[name].is_river),
+              'shaping_flap': bool(tree[name].shaping_flap),
               'symmetric': (
                   tree[name].symmetric_stick_name
                   or _infer_symmetric_stick(name, all_names)
@@ -493,6 +494,8 @@ def _silhouette_and_body_metrics(
   sticks = geometry['sticks']
   mesh_v = fit.apply(model.vertices_3d * to_tree_units)
   tris = _fan_triangulate(model.faces)
+  # Include `shaping_flap` capsules in raster bounds / `max_w` because their
+  # folded paper remains in the mesh and contributes to `union_loose` below.
   target_pts = np.asarray(list(target.values()), dtype=float)
   max_w = max((float(s['width']) for s in sticks.values()), default=1.0)
 
@@ -537,6 +540,8 @@ def _silhouette_and_body_metrics(
       union_loose |= _capsule_mask_2d(
           uu, vv, t0_3d[[ax_u, ax_v]], t1_3d[[ax_u, ax_v]], loose_r
       )
+      if stick.get('shaping_flap'):
+        continue
       use_aligned = (
           near in aligned
           and far in aligned
@@ -628,6 +633,8 @@ def _score_direction(
   within = total = stray_len = flap_total = 0.0
   stray_names: list[str] = []
   for name, stick in sticks.items():
+    if stick.get('shaping_flap'):
+      continue
     near, far = stick['proximal'], stick['distal']
     if near not in aligned or far not in aligned:
       continue
@@ -689,6 +696,8 @@ def _score_articulation(
 
   limb_scores: dict[str, float] = {}
   for merged_name, chain in geometry['chains'].items():
+    if any(sticks[n].get('shaping_flap') for n in chain):
+      continue
     if not any(sticks[n]['symmetric'] for n in chain):
       continue
     folded_pts = _chain_points(chain, use_target=False)
@@ -722,6 +731,8 @@ def _score_separation_and_symmetry(
   sections = geometry['sections']
   tips: dict[str, float] = {}
   for chain in geometry['chains'].values():
+    if any(sticks[n].get('shaping_flap') for n in chain):
+      continue
     tip = sticks[chain[-1]]['distal']
     if tip in aligned:
       tips[tip] = float(sum(sticks[n]['length'] for n in chain))
@@ -745,6 +756,8 @@ def _score_separation_and_symmetry(
   stacked: list[str] = []
   asym_widths: list[str] = []
   for name, stick in sticks.items():
+    if stick.get('shaping_flap'):
+      continue
     other = stick['symmetric']
     if not other or other not in sticks or name > other:
       continue
@@ -789,6 +802,8 @@ def _score_width(
   widths: dict[str, float] = {}
   weighted = total_len = 0.0
   for name, stick in geometry['sticks'].items():
+    if stick.get('shaping_flap'):
+      continue
     sec = geometry['sections'].get(f'{name}@0.5')
     if sec is None or stick['is_river'] or name == geometry['root']:
       continue
@@ -875,7 +890,18 @@ def components(
   """Computes `[0, 1]` component scores, diagnostic details, and alignment."""
   sticks = geometry['sticks']
   joints = geometry['joints']
-  located = sorted(n for n, j in joints.items() if j['folded'] is not None)
+  pose_joints: set[str] = set()
+  for stick in sticks.values():
+    if stick.get('shaping_flap'):
+      continue
+    pose_joints.add(stick['proximal'])
+    pose_joints.add(stick['distal'])
+  located_all = sorted(n for n, j in joints.items() if j['folded'] is not None)
+  located_pose = [n for n in located_all if n in pose_joints]
+  # Fall back to `located_all` only on degenerate 1-stick skeletons (< 3 pose
+  # joints) where auxiliary shaping-flap tips provide the third point for SE(3).
+  use_pose_joints = len(located_pose) >= 3
+  located = located_pose if use_pose_joints else located_all
   if len(located) < 3:
     raise ValueError(f'Only {len(located)} joints located on the paper.')
 
@@ -984,7 +1010,7 @@ def components(
       'body_thickness': round(body_thickness, 4),
       'mirrored': fit.reflected,
       'joints_located': len(located),
-      'joints_total': len(joints),
+      'joints_total': len(pose_joints) if use_pose_joints else len(joints),
       **extra_details,
   }
   alignment = AlignmentInfo(
@@ -1103,7 +1129,7 @@ def stick_directions(
   joints = geometry['joints']
 
   if full_report.mirrored:
-    located = sorted(n for n, j in joints.items() if j['folded'] is not None)
+    located = list(full_report.details['joint_error'])
     src = np.asarray([joints[n]['folded'] for n in located], dtype=float)
     goal = np.asarray([joints[n]['target'] for n in located], dtype=float)
     size = max(

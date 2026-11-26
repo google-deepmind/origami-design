@@ -22,7 +22,7 @@ Consult the matching skill under `.agents/skills/` for each design phase:
    (`.svg`, `.fold`, `.bps.json`).
 4. `origami-shaping`: Transform a flat-foldable `SolvedCreasePattern` into an
    expressive 3D model using `bp.shape`, `bp.pose` (`bp.PoseConfig`), and the
-   20-tool stateful actuator toolbox (`bp.ShapingState`,
+   21-tool stateful actuator toolbox (`bp.ShapingState`,
    `bp.apply_shaping_tool`, `bp.apply_shaping_tools`, `bp.list_shaping_tools`,
    `bp.probe_shaping`). See `.agents/skills/origami-shaping/references/tools.md`
    and `.agents/skills/origami-shaping/references/pose.md`.

@@ -85,11 +85,11 @@ patterns (`CreasePattern`) and shaded 3D shaped models:
         [Flat-Folder](https://github.com/origamimagiro/flat-folder) software.
 6.  **3D Origami Shaping, Pose Recipes & Bundled Agent Design Skills**:
     -   3D geometric simple-fold and river-bend shaping (`bp.shape()`),
-        closed-loop automatic posing (`bp.pose()`, `bp.PoseConfig`), a 20-tool
+        closed-loop automatic posing (`bp.pose()`, `bp.PoseConfig`), a 21-tool
         stateful shaping toolbox (`bp.ShapingState`, `bp.apply_shaping_tool()`,
         `bp.list_shaping_tools()`, including width-2 sacrificial-pocket
-        `level_shifter`), quantitative pose fidelity scoring
-        (`bp.evaluate_fidelity()`), dihedral hinge-mesh folding
+        `level_shifter` and `shape_flap_template`), quantitative pose fidelity
+        scoring (`bp.evaluate_fidelity()`), dihedral hinge-mesh folding
         (`bp.build_folded_mesh_3d()`), and portable AI agent skills under
         `.agents/`.
 

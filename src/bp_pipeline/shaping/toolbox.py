@@ -30,6 +30,7 @@ from .. import folder_3d
 from .. import utils_tree
 from ..crease_pattern import crease as crease_utils
 from ..crease_pattern import crease_pattern as crease_pattern_lib
+from ..packing import shaping_flap_templates
 from ..solving import hinges as hinge_utils
 from ..solving import level_shifters as level_shifters_lib
 from ..solving import utils_ls
@@ -103,6 +104,7 @@ TOOL_NAMES: tuple[str, ...] = (
     'apply_symmetric',
     'tree_edit',
     'level_shifter',
+    'shape_flap_template',
 )
 
 
@@ -2674,6 +2676,7 @@ def _apply_symmetric_outcome(
       'fold_spine',
       'radial_fan',
       'spread_fork',
+      'shape_flap_template',
   ):
     raise ValueError(
         f'apply_symmetric does not wrap global/multi-element tool {inner!r}.'
@@ -3269,6 +3272,251 @@ def level_shifter(
 
 
 # ------------------------------------------------------------------------------
+# 21. Composable shaping-flap template sculpting (`shape_flap_template`).
+# ------------------------------------------------------------------------------
+
+
+def _shape_flap_template_outcome(
+    state: ShapingState,
+    *,
+    element_name: str = '',
+    style: str = 'armor',
+    open_percent: float = 0.45,
+    verify_fold: bool = True,
+) -> state_lib.ToolOutcome:
+  """Sculpts `KneeTemplate` and `TailTemplate` `shaping_flap` pockets in 3D.
+
+  Each `style` maps deterministically to one operation without posing or
+  bending non-shaping sticks:
+  - `'armor'`: `open_flap(fold_percent=open_percent, ridge_only=False)`
+  - `'taper'`: `narrow_central_flap(tip_width=0.35)` on central `TailTemplate`
+    blades spanning the `x = 0.5` axis (`contains_central_crease`) with
+    `length >= 2` when `central_crease_removed` is True, or width-halving
+    `simple_fold` on length-1, split, or off-axis blades
+  - `'tuck'`: width-halving `simple_fold(angle=45.0, narrow=True)`
+
+  Args:
+    state: Current `ShapingState`.
+    element_name: Optional template stick, connecting river, `tip_flap`, or knee
+      member name (plus its symmetric partner when mirrored); empty targets all
+      template `shaping_flap` sticks.
+    style: One of `'armor'`, `'taper'`, or `'tuck'`.
+    open_percent: `fold_percent` in `(0, 1)` forwarded to `open_flap` for
+      `'armor'` (smaller values open the flap wider).
+    verify_fold: Whether to require clean 3D folding via `verify_3d_fold`
+      (`vertex_error <= MAX_RENDERABLE_VERTEX_ERROR`).
+
+  Returns:
+    Updated `ToolOutcome` reporting per-flap applied and skipped operations in
+    `note`.
+
+  Raises:
+    ValueError: If `style` or `open_percent` is invalid, no `shaping_flap`
+      templates match, or any targeted template `shaping_flap` fails.
+  """
+  if style not in ('armor', 'tuck', 'taper'):
+    raise ValueError(
+        f'Unsupported template style {style!r}; expected'
+        " 'armor', 'tuck', or 'taper'."
+    )
+  if not 0.0 < float(open_percent) < 1.0:
+    raise ValueError(f'open_percent must be in (0, 1), got {open_percent}.')
+  tree = state.tree
+  if not shaping_flap_templates.has_shaping_flaps(tree):
+    raise ValueError(
+        'This stick figure has no `shaping_flap: true` sticks to sculpt.'
+    )
+
+  tails, tail_claimed = shaping_flap_templates.find_tail_templates(tree)
+  knees = shaping_flap_templates.find_knee_templates(
+      tree, exclude_sticks=tail_claimed
+  )
+
+  target_names: set[str] = set()
+  if element_name:
+    target_names.add(element_name)
+    if element_name in tree and tree[element_name].symmetric_stick_name:
+      target_names.add(tree[element_name].symmetric_stick_name)
+
+  cur_state = state
+  applied_operations: dict[str, str] = {}
+  skipped_elements: dict[str, str] = {}
+  failed_operations: dict[str, str] = {}
+  central_open = bool(cur_state.central_crease_removed)
+
+  for tail in tails:
+    tail_rivers = {r.name for r in tail.connecting_rivers}
+    tail_tip_match = (
+        tail.tip_flap is not None and tail.tip_flap.name in target_names
+    )
+    tail_selected_by_group = bool(
+        target_names and ((target_names & tail_rivers) or tail_tip_match)
+    )
+    for sf in tail.shaping_flaps:
+      if (
+          target_names
+          and sf.name not in target_names
+          and not tail_selected_by_group
+      ):
+        skipped_elements[sf.name] = 'not_selected'
+        continue
+      if style == 'armor':
+        op_name = 'open_flap'
+        op_args: dict[str, Any] = {
+            'element_name': sf.name,
+            'fold_percent': float(open_percent),
+            'ridge_only': False,
+            'verify_fold': verify_fold,
+        }
+      elif (
+          style == 'taper'
+          and central_open
+          and state_lib.element_spans_axis(cur_state.element(sf.name))
+          and int(sf.length) >= 2
+      ):
+        op_name = 'narrow_central_flap'
+        op_args = {
+            'element_name': sf.name,
+            'tip_width': 0.35,
+            'verify_fold': verify_fold,
+        }
+      else:
+        op_name = 'simple_fold'
+        op_args = {
+            'element_name': sf.name,
+            'angle': 45.0,
+            'narrow': True,
+            'verify_fold': verify_fold,
+        }
+      cand_state, res = apply_tool(cur_state, op_name, op_args)
+      if res.ok:
+        cur_state = cand_state
+        applied_operations[sf.name] = op_name
+      else:
+        failed_operations[sf.name] = res.message
+
+  processed_knees: set[str] = set()
+  knee_by_sf = {kt.shaping_flap.name: kt for kt in knees}
+  for kt in knees:
+    sf_name = kt.shaping_flap.name
+    if sf_name in processed_knees:
+      continue
+    kt_names = {kt.shaping_flap.name, kt.normal_flap.name, kt.other.name}
+    sym_sf = tree[sf_name].symmetric_stick_name
+    partner_kt = knee_by_sf.get(sym_sf) if sym_sf else None
+    if partner_kt is not None:
+      kt_names |= {
+          partner_kt.shaping_flap.name,
+          partner_kt.normal_flap.name,
+          partner_kt.other.name,
+      }
+    group = [kt] + (
+        [partner_kt]
+        if partner_kt is not None and partner_kt.shaping_flap.name != sf_name
+        else []
+    )
+    for item in group:
+      processed_knees.add(item.shaping_flap.name)
+
+    if target_names and not (target_names & kt_names):
+      for item in group:
+        skipped_elements[item.shaping_flap.name] = 'not_selected'
+      continue
+
+    if style == 'armor':
+      inner_tool = 'open_flap'
+      inner_args: dict[str, Any] = {
+          'fold_percent': float(open_percent),
+          'ridge_only': False,
+          'verify_fold': verify_fold,
+      }
+    else:
+      inner_tool = 'simple_fold'
+      inner_args = {
+          'angle': 45.0,
+          'narrow': True,
+          'verify_fold': verify_fold,
+      }
+
+    if len(group) == 2:
+      left_cap = group[0].shaping_flap.name
+      right_cap = group[1].shaping_flap.name
+      cand_state, res = apply_tool(
+          cur_state,
+          'apply_symmetric',
+          {
+              'tool': inner_tool,
+              'element_name': left_cap,
+              'partner_name': right_cap,
+              'arguments': inner_args,
+          },
+      )
+      if res.ok:
+        cur_state = cand_state
+        applied_operations[left_cap] = inner_tool
+        applied_operations[right_cap] = inner_tool
+      else:
+        failed_operations[left_cap] = res.message
+        failed_operations[right_cap] = res.message
+    else:
+      cap_name = group[0].shaping_flap.name
+      cand_state, res = apply_tool(
+          cur_state,
+          inner_tool,
+          {'element_name': cap_name, **inner_args},
+      )
+      if res.ok:
+        cur_state = cand_state
+        applied_operations[cap_name] = inner_tool
+      else:
+        failed_operations[cap_name] = res.message
+
+  if failed_operations:
+    details = '; '.join(f'{k}: {v}' for k, v in failed_operations.items())
+    raise ValueError(
+        f'Shaping-flap template ({style}) failed on targeted flaps: {details}'
+    )
+  if not applied_operations:
+    suffix = f' matching {element_name!r}.' if element_name else '.'
+    raise ValueError(f'No shaping-flap templates found{suffix}')
+
+  summary = ', '.join(f'{k}={v}' for k, v in applied_operations.items())
+  skip_note = (
+      f' (skipped: {", ".join(sorted(skipped_elements))})'
+      if skipped_elements
+      else ''
+  )
+  return state_lib.ToolOutcome(
+      state=cur_state.replace(history=state.history),
+      resolved_arguments={
+          'element_name': element_name,
+          'style': style,
+          'open_percent': float(open_percent),
+          'verify_fold': verify_fold,
+      },
+      note=f'Sculpted shaping_flap templates ({style}): {summary}{skip_note}',
+  )
+
+
+def shape_flap_template(
+    state: ShapingState,
+    *,
+    element_name: str = '',
+    style: str = 'armor',
+    open_percent: float = 0.45,
+    verify_fold: bool = True,
+) -> ShapingState:
+  """Sculpts `KneeTemplate` and `TailTemplate` `shaping_flap` pockets in 3D."""
+  return _shape_flap_template_outcome(
+      state,
+      element_name=element_name,
+      style=style,
+      open_percent=open_percent,
+      verify_fold=verify_fold,
+  ).state
+
+
+# ------------------------------------------------------------------------------
 # Declarative registry, safe JSON dispatch, and non-mutating element probing.
 # ------------------------------------------------------------------------------
 
@@ -3293,6 +3541,7 @@ _TOOL_OUTCOMES: dict[str, Callable[..., state_lib.ToolOutcome]] = {
     'apply_symmetric': _apply_symmetric_outcome,
     'tree_edit': _tree_edit_outcome,
     'level_shifter': _level_shifter_outcome,
+    'shape_flap_template': _shape_flap_template_outcome,
 }
 
 
@@ -3431,6 +3680,15 @@ def probe(
             ls_eligible.update(merged_map.get(partner_m, ()))
     except ValueError:
       ls_eligible = set()
+  tails, claimed = shaping_flap_templates.find_tail_templates(state.tree)
+  knees = shaping_flap_templates.find_knee_templates(
+      state.tree, exclude_sticks=claimed
+  )
+  template_sfs = itertools.chain(
+      itertools.chain.from_iterable(tail.shaping_flaps for tail in tails),
+      (kt.shaping_flap for kt in knees),
+  )
+  template_sf_names = {sf.name for sf in template_sfs}
   out: dict[str, dict[str, Any]] = {}
   for name in targets:
     elem = state.element(name)
@@ -3494,6 +3752,8 @@ def probe(
       if elem.width >= 2:
         tools_ok.append('inscribed_flap')
       tools_ok.append('open_flap')
+    if name in template_sf_names:
+      tools_ok.append('shape_flap_template')
     info['available_tools'] = tools_ok
     out[name] = info
   return out

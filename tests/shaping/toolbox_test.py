@@ -272,7 +272,7 @@ class ShapingStateTest(absltest.TestCase):
 
   def test_inspection_helpers_and_registry(self):
     self.assertEqual(toolbox.list_shaping_tools(), toolbox.TOOL_NAMES)
-    self.assertLen(toolbox.TOOL_NAMES, 20)
+    self.assertLen(toolbox.TOOL_NAMES, 21)
     self.assertEqual(
         toolbox.normalize_tool_name('shaping:crimp_fold'), 'crimp_fold'
     )

@@ -279,7 +279,7 @@ def find_side_crossings(
 
   crossings: list[SideCrossing] = []
   for name, stick in sticks.items():
-    if name == root:
+    if name == root or stick.get('shaping_flap'):
       continue
     near, far = stick['proximal'], stick['distal']
     if near not in design_joints or far not in design_joints:
@@ -488,7 +488,11 @@ def root_frame_directions(
       if k.endswith((mid_suffix, '@0', '@0.25'))
   }
   stick_endpoints = {
-      n: {'proximal': topo.proximal[n], 'distal': topo.distal[n]}
+      n: {
+          'proximal': topo.proximal[n],
+          'distal': topo.distal[n],
+          'shaping_flap': bool(tree[n].shaping_flap),
+      }
       for n in topo.order
   }
   crossings = find_side_crossings(

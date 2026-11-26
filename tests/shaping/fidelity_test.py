@@ -602,6 +602,284 @@ class EndToEndFidelityTest(parameterized.TestCase):
       self.assertIsNotNone(root_dirs)
       self.assertIn('directions', root_dirs)
 
+  def test_shaping_flap_sticks_carry_no_pose_target_or_fidelity_term(self):
+    geom_base = _synthetic_geometry(lambda p: p)
+    scores_base, details_base, _ = fidelity.components(geom_base)
+    self.assertEmpty(details_base['stray_flaps'])
+
+    # Add an auxiliary `shaping_flap: True` stick pointing 90 degrees off its
+    # nominal stick-figure angle and with mismatched width: all fidelity terms,
+    # joint counts, and `stray_flaps` must stay identical to `geom_base`.
+    geom_with_sf = _synthetic_geometry(lambda p: p)
+    geom_with_sf['joints']['sf_tip'] = {
+        'folded': [0.0, 1.0, 0.0],
+        'target': [1.0, 0.0, 0.5],
+    }
+    geom_with_sf['sticks']['aux_sf'] = {
+        'length': 1.0,
+        'width': 1.0,
+        'proximal': 'hip',
+        'distal': 'sf_tip',
+        'parent': 'body',
+        'is_river': False,
+        'shaping_flap': True,
+        'symmetric': None,
+    }
+    geom_with_sf['chains']['aux_sf'] = ['aux_sf']
+    geom_with_sf['sections']['aux_sf@0.5'] = {
+        'folded': [0.0, 0.5, 0.0],
+        'width': 0.25,
+    }
+    # Add a mirrored shaping-flap pair whose folded tips sit stacked on `foot_l`
+    # with straight collinear sections so articulation, tip-clumping, and
+    # mirrored-pair separation/symmetry exclusions are all exercised.
+    clumped_pt = [0.5, 1.5, -1.5]
+    geom_with_sf['joints']['sf_tip_l'] = {
+        'folded': list(clumped_pt),
+        'target': [0.5, 1.2, 0.5],
+    }
+    geom_with_sf['joints']['sf_tip_r'] = {
+        'folded': list(clumped_pt),
+        'target': [0.5, -1.2, 0.5],
+    }
+    for side, partner, tip_j in (
+        ('aux_sf_l', 'aux_sf_r', 'sf_tip_l'),
+        ('aux_sf_r', 'aux_sf_l', 'sf_tip_r'),
+    ):
+      geom_with_sf['sticks'][side] = {
+          'length': 2.0,
+          'width': 1.0,
+          'proximal': 'hip',
+          'distal': tip_j,
+          'parent': 'body',
+          'is_river': False,
+          'shaping_flap': True,
+          'symmetric': partner,
+      }
+      geom_with_sf['chains'][side] = [side]
+      for frac in paper_layout.SECTION_FRACTIONS:
+        geom_with_sf['sections'][f'{side}@{frac:g}'] = {
+            'folded': [frac * c for c in clumped_pt],
+            'width': 0.2,
+        }
+    scores_sf, details_sf, _ = fidelity.components(geom_with_sf)
+    self.assertEmpty(details_sf['stray_flaps'])
+    self.assertEmpty(details_sf['clumped_tips'])
+    self.assertEmpty(details_sf['stacked_pairs'])
+    self.assertNotIn('aux_sf', details_sf['direction_error_deg'])
+    self.assertNotIn('aux_sf_l', details_sf['direction_error_deg'])
+    self.assertNotIn('aux_sf', details_sf['widths'])
+    for comp in (
+        'direction',
+        'articulation',
+        'separation',
+        'symmetry',
+        'width',
+        'pose',
+    ):
+      self.assertAlmostEqual(scores_sf[comp], scores_base[comp], places=6)
+    self.assertEqual(
+        details_sf['joints_located'], details_base['joints_located']
+    )
+    self.assertEqual(details_sf['joints_total'], details_base['joints_total'])
+
+    # Verify `_silhouette_and_body_metrics` skips `shaping_flap` sticks from
+    # recall while keeping their capsule in `union_loose` so opened shaping
+    # paper does not penalize `silhouette_precision`.
+    layout = paper_layout.PaperLayout(
+        joints={},
+        sections={},
+        chains={},
+        grid_size=1,
+        grid_units_per_tree_unit=1.0,
+        flap_rectangles=(),
+    )
+    body_mesh = fold_3d.FoldedModel(
+        vertices_2d=np.zeros((4, 2)),
+        vertices_3d=np.array([
+            [0.0, -0.5, 0.0],
+            [2.0, -0.5, 0.0],
+            [2.0, 0.5, 0.0],
+            [0.0, 0.5, 0.0],
+        ]),
+        faces=(np.array([0, 1, 2, 3]),),
+        edges=np.zeros((0, 2), dtype=int),
+        assignments=(),
+        fold_angles=np.zeros(0),
+        face_matrices=np.broadcast_to(np.eye(4), (1, 4, 4)).copy(),
+    )
+    sil_scores_base, sil_details_base, _ = fidelity.components(
+        geom_base, layout=layout, model=body_mesh
+    )
+    sil_scores_sf, sil_details_sf, _ = fidelity.components(
+        geom_with_sf, layout=layout, model=body_mesh
+    )
+    self.assertNotIn('aux_sf', sil_details_sf['stick_silhouette_coverage'])
+    self.assertAlmostEqual(
+        sil_details_sf['silhouette_recall'],
+        sil_details_base['silhouette_recall'],
+        places=4,
+    )
+    self.assertAlmostEqual(
+        sil_scores_sf['silhouette'], sil_scores_base['silhouette'], places=4
+    )
+
+    sf_paper_mesh = fold_3d.FoldedModel(
+        vertices_2d=np.zeros((8, 2)),
+        vertices_3d=np.array([
+            [0.0, -0.5, 0.0],
+            [2.0, -0.5, 0.0],
+            [2.0, 0.5, 0.0],
+            [0.0, 0.5, 0.0],
+            [0.0, -0.2, 0.0],
+            [1.0, -0.2, 0.5],
+            [1.0, 0.2, 0.5],
+            [0.0, 0.2, 0.0],
+        ]),
+        faces=(np.array([0, 1, 2, 3]), np.array([4, 5, 6, 7])),
+        edges=np.zeros((0, 2), dtype=int),
+        assignments=(),
+        fold_angles=np.zeros(0),
+        face_matrices=np.broadcast_to(np.eye(4), (2, 4, 4)).copy(),
+    )
+    _, sf_paper_details, _ = fidelity.components(
+        geom_with_sf, layout=layout, model=sf_paper_mesh
+    )
+    self.assertAlmostEqual(
+        sf_paper_details['silhouette_precision'], 1.0, places=4
+    )
+
+    # Mirrored `stick_directions` re-fit also excludes `shaping_flap` joints.
+    cat_res = bp.fold('cat', preset='demo', shape=True)
+    assert cat_res.packed.design is not None
+    assert cat_res.shaped is not None
+    cat_tree = cat_res.packed.design.source
+    cat_layout = paper_layout.build_paper_layout(cat_tree, cat_res.packed)
+    cat_model = fold_3d.fold_3d(cat_res.shaped)
+    mirror_model = dataclasses.replace(
+        cat_model,
+        vertices_3d=cat_model.vertices_3d * np.array([1.0, 1.0, -1.0]),
+    )
+    rep_base, dirs_base = fidelity.stick_directions(
+        cat_tree, cat_res.packed, mirror_model, layout=cat_layout
+    )
+    self.assertTrue(rep_base.mirrored)
+    cat_dict = cat_tree.to_dict()
+    cat_root = cat_tree[cat_tree.root]
+    cat_dict['children'].append({
+        'name': 'aux_mirror_sf',
+        'start': cat_root.start,
+        'end': 'aux_mirror_sf_tip',
+        'length': 6,
+        'width': 1,
+        'azimuth_angle': 90.0,
+        'elevation_angle': 85.0,
+        'shaping_flap': True,
+    })
+    cat_with_sf = bp.StickFigure.from_dict(cat_dict)
+    cat_sf_joints = dict(cat_layout.joints)
+    cat_sf_joints['aux_mirror_sf_tip'] = np.array([0.0, 0.0])
+    cat_sf_layout = dataclasses.replace(cat_layout, joints=cat_sf_joints)
+    rep_sf, dirs_sf = fidelity.stick_directions(
+        cat_with_sf, cat_res.packed, mirror_model, layout=cat_sf_layout
+    )
+    self.assertTrue(rep_sf.mirrored)
+    np.testing.assert_allclose(
+        dirs_sf[cat_tree.root]['realized'],
+        dirs_base[cat_tree.root]['realized'],
+        atol=1e-4,
+    )
+
+    # Also verify direction, articulation, tip-clumping, and mirrored-pair
+    # separation/symmetry skip `shaping_flap` sticks even when fewer than 3
+    # non-shaping joints exist (`located = located_all` includes `sf_tip*`).
+    minimal_sections: dict[str, dict[str, Any]] = {
+        'body@0.5': {'folded': [1.0, 0.0, 0.0], 'width': 1.0},
+        'aux_sf@0.5': {'folded': [0.0, 0.0, 1.0], 'width': 1.0},
+    }
+    for side in ('aux_sf_l', 'aux_sf_r'):
+      for frac in paper_layout.SECTION_FRACTIONS:
+        minimal_sections[f'{side}@{frac:g}'] = {
+            'folded': [2.0 * frac, 0.0, 0.0],
+            'width': 1.0,
+        }
+    minimal_sf_geom = {
+        'root': 'body',
+        'sticks': {
+            'body': {
+                'length': 2.0,
+                'width': 1.0,
+                'proximal': 'hip',
+                'distal': 'neck',
+                'parent': None,
+                'is_river': False,
+                'shaping_flap': False,
+                'symmetric': None,
+            },
+            'aux_sf': {
+                'length': 2.0,
+                'width': 1.0,
+                'proximal': 'hip',
+                'distal': 'sf_tip',
+                'parent': 'body',
+                'is_river': False,
+                'shaping_flap': True,
+                'symmetric': None,
+            },
+            'aux_sf_l': {
+                'length': 2.0,
+                'width': 1.0,
+                'proximal': 'hip',
+                'distal': 'sf_tip_l',
+                'parent': 'body',
+                'is_river': False,
+                'shaping_flap': True,
+                'symmetric': 'aux_sf_r',
+            },
+            'aux_sf_r': {
+                'length': 2.0,
+                'width': 1.0,
+                'proximal': 'hip',
+                'distal': 'sf_tip_r',
+                'parent': 'body',
+                'is_river': False,
+                'shaping_flap': True,
+                'symmetric': 'aux_sf_l',
+            },
+        },
+        'chains': {
+            'body': ['body'],
+            'aux_sf': ['aux_sf'],
+            'aux_sf_l': ['aux_sf_l'],
+            'aux_sf_r': ['aux_sf_r'],
+        },
+        'joints': {
+            'hip': {'folded': [0.0, 0.0, 0.0], 'target': [0.0, 0.0, 0.0]},
+            'neck': {'folded': [2.0, 0.0, 0.0], 'target': [2.0, 0.0, 0.0]},
+            'sf_tip': {'folded': [0.0, 0.0, 2.0], 'target': [0.0, 0.0, 2.0]},
+            'sf_tip_l': {'folded': [2.0, 0.0, 0.0], 'target': [2.0, 2.5, 0.0]},
+            'sf_tip_r': {'folded': [2.0, 0.0, 0.0], 'target': [2.0, -2.5, 0.0]},
+        },
+        'sections': minimal_sections,
+        'model_extents': [2.0, 2.0, 2.0],
+        'body_extents': [2.0, 1.0, 0.2],
+    }
+    min_scores, min_details, _ = fidelity.components(minimal_sf_geom)
+    self.assertEmpty(min_details['stray_flaps'])
+    self.assertEmpty(min_details['clumped_tips'])
+    self.assertEmpty(min_details['stacked_pairs'])
+    self.assertNotIn('aux_sf', min_details['direction_error_deg'])
+    self.assertNotIn('aux_sf_l', min_details['direction_error_deg'])
+    for comp in ('direction', 'articulation', 'separation', 'symmetry'):
+      self.assertAlmostEqual(min_scores[comp], 1.0, places=6)
+
+    # Control: when `shaping_flap` is False, the 90-degree error IS flagged.
+    geom_with_sf['sticks']['aux_sf']['shaping_flap'] = False
+    scores_regular, details_regular, _ = fidelity.components(geom_with_sf)
+    self.assertIn('aux_sf', details_regular['stray_flaps'])
+    self.assertLess(scores_regular['direction'], scores_base['direction'])
+    self.assertLess(scores_regular['width'], scores_base['width'])
+
 
 if __name__ == '__main__':
   absltest.main()

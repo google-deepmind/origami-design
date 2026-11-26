@@ -467,7 +467,7 @@ class ApiTest(parameterized.TestCase):
 
   def test_shaping_toolbox_and_pose_public_api(self):
     tools = bp.list_shaping_tools()
-    self.assertLen(tools, 20)
+    self.assertLen(tools, 21)
     for name in (
         'simple_fold',
         'crimp_fold',
@@ -482,6 +482,7 @@ class ApiTest(parameterized.TestCase):
         'apply_symmetric',
         'tree_edit',
         'level_shifter',
+        'shape_flap_template',
     ):
       self.assertIn(name, tools)
     self.assertIn('auto', bp.PoseMode.__args__)

@@ -164,6 +164,10 @@ def pose_plan(state: state_lib.ShapingState) -> list[ElementPlan]:
     elif stick.length <= 0:
       role = ROLE_SKIP
       tools = ()
+    elif stick.shaping_flap:
+      # `recommended_tools` is advisory here; `bp.pose` skips `ROLE_SKIP`.
+      role = ROLE_SKIP
+      tools = ('shape_flap_template',)
     elif stick.is_river:
       role = ROLE_RIVER
       base_tools = ['rotation_3d', 'open_flap']
@@ -485,6 +489,8 @@ def _initial_targets(
     if name == root_name:
       continue
     stick = state.tree[name]
+    if stick.shaping_flap:
+      continue
     az = angle_utils.wrap_angle_centered(
         float(stick.azimuth_angle) + biases.get(name, 0.0), 360.0
     )
