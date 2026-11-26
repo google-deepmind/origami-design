@@ -666,6 +666,11 @@ footer {
   border-style: dashed;
 }
 
+/* Reserved strips, non-limb paper from packing, get a dotted outline. */
+.regions .reserved {
+  border-style: dotted;
+}
+
 .video-controls a:not([href]),
 .downloads a:not([href]) {
   display: none;

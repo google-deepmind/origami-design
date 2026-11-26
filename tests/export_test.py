@@ -36,6 +36,10 @@ class ExportTest(parameterized.TestCase):
   def setUpClass(cls):
     super().setUpClass()
     cls.cat_result = bp.fold('cat', preset='demo')
+    cls.human_rcc_packed = bp.pack(
+        bp.prepare(bp.load_example('human')),
+        bp.PackingConfig(remove_central_crease=True),
+    )
 
   def test_bp_studio_tree_and_round_trip(self):
     sf = bp.load_example('cat')
@@ -402,6 +406,142 @@ class ExportTest(parameterized.TestCase):
       self.assertTrue(
           any('unknown stick' in err for err in result.validation_errors)
       )
+
+  def test_remove_central_crease_human_export_and_import(self):
+    packed = self.human_rcc_packed
+    self.assertNotEmpty(packed.reservations)
+    self.assertFalse(
+        any(fid.startswith('axis_filler') for fid in packed.flaps)
+    )
+    bps_doc = bp.to_bp_studio(packed)
+    self.assertNotEmpty(bps_doc['design']['layout'].get('reservations', ()))
+    result = bp.import_bps(bps_doc)
+    self.assertEmpty(result.validation_errors)
+    self.assertIsNotNone(result.packed)
+    self.assertEqual(result.packed.reservations, packed.reservations)
+    self.assertEqual(
+        result.packed.creases.hash_value, packed.creases.hash_value
+    )
+    solved = bp.solve_best(result.packed)
+    self.assertTrue(solved.creases.local_flat_foldability())
+    solved_rcc = bp.solve_best(
+        result.packed, bp.SolverConfig(remove_central_crease=True)
+    )
+    self.assertTrue(solved_rcc.creases.local_flat_foldability())
+    self.assertTrue(solved_rcc.central_crease_removed)
+
+  def test_to_bp_studio_omits_reservations_when_empty(self):
+    packed = self.cat_result.packed
+    self.assertEmpty(packed.reservations)
+    bps_doc = bp.to_bp_studio(packed)
+    layout = bps_doc['design']['layout']
+    self.assertNotIn('reservations', layout)
+    self.assertEqual(
+        list(layout.keys()), ['sheet', 'scale_factor', 'flaps', 'stretches']
+    )
+    without_reservations = copy.deepcopy(bps_doc)
+    without_reservations['design']['layout'].pop('reservations', None)
+    self.assertEqual(
+        json.dumps(bps_doc, indent=2),
+        json.dumps(without_reservations, indent=2),
+    )
+
+  def test_import_bps_reservations_scale_factor_and_custom_id_round_trip(self):
+    packed = self.human_rcc_packed
+    bps_doc = copy.deepcopy(bp.to_bp_studio(packed))
+    layout = bps_doc['design']['layout']
+    layout['sheet']['width'] *= 2
+    layout['sheet']['height'] *= 2
+    layout['scale_factor'] = 2
+    for flap in layout['flaps']:
+      for k in ('x', 'y', 'width', 'height'):
+        flap[k] *= 2
+    for stretch in layout['stretches']:
+      stretch['width'] *= 2
+      for rect in stretch['rects']:
+        for k in ('x', 'y', 'width', 'height'):
+          rect[k] *= 2
+    for i, res in enumerate(layout['reservations']):
+      res['id'] = f'custom_strip_{i}'
+      for k in ('x', 'y', 'width', 'height'):
+        res[k] *= 2
+
+    result = bp.import_bps(bps_doc)
+    self.assertEmpty(result.validation_errors)
+    self.assertIsNotNone(result.packed)
+    self.assertEqual(
+        [r.id for r in result.packed.reservations],
+        [f'custom_strip_{i}' for i in range(len(packed.reservations))],
+    )
+    self.assertEqual(
+        [r.rect for r in result.packed.reservations],
+        [r.rect for r in packed.reservations],
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='out_of_bounds',
+          mutate=lambda layout: layout['reservations'][0].update(
+              {'x': layout['sheet']['width']}
+          ),
+          expected_error='exceeds sheet bounds',
+      ),
+      dict(
+          testcase_name='non_positive_dimension',
+          mutate=lambda layout: layout['reservations'][0].update({'width': 0}),
+          expected_error='invalid or exceeds sheet bounds',
+      ),
+      dict(
+          testcase_name='overlaps_flap',
+          mutate=lambda layout: layout['reservations'][0].update(
+              {'x': 0, 'y': 0, 'width': 2, 'height': 2}
+          ),
+          expected_error='overlaps with',
+      ),
+      dict(
+          testcase_name='overlaps_river',
+          mutate=lambda layout: layout['reservations'].append({
+              'id': 'dup_river',
+              **layout['stretches'][0]['rects'][0],
+          }),
+          expected_error='overlaps with',
+      ),
+      dict(
+          testcase_name='overlaps_other_reservation',
+          mutate=lambda layout: layout['reservations'].append(
+              {**layout['reservations'][0], 'id': 'dup_res'}
+          ),
+          expected_error='overlaps with',
+      ),
+      dict(
+          testcase_name='indivisible_scale_factor',
+          mutate=lambda layout: (
+              layout.update({'scale_factor': 2}),
+              layout['reservations'][0].update({'x': 3}),
+          ),
+          expected_error='not divisible by scale_factor',
+      ),
+      dict(
+          testcase_name='indivisible_scale_factor_null_id_uses_fallback',
+          mutate=lambda layout: (
+              layout.update({'scale_factor': 2}),
+              layout['reservations'][0].update({'id': None, 'x': 3}),
+          ),
+          expected_error="Reservation 'axis_filler_0' coordinate 'x'=3",
+      ),
+  )
+  def test_import_bps_invalid_reservations_rejected(
+      self, mutate, expected_error
+  ):
+    bps_doc = copy.deepcopy(bp.to_bp_studio(self.human_rcc_packed))
+    mutate(bps_doc['design']['layout'])
+    result = bp.import_bps(bps_doc)
+    self.assertIsNone(result.packed)
+    self.assertNotEmpty(result.validation_errors)
+    self.assertTrue(
+        any(expected_error in err for err in result.validation_errors),
+        msg=f'Expected {expected_error!r} in {result.validation_errors}',
+    )
 
 
 if __name__ == '__main__':

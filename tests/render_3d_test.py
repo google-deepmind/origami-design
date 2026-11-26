@@ -66,7 +66,7 @@ class MeshToFoldDictTest(absltest.TestCase):
         [stick.name for stick in bp.load_example('cat').children],
     )
     self.assertContainsSubset(
-        {region['kind'] for region in regions}, {'flap', 'river'}
+        {region['kind'] for region in regions}, {'flap', 'river', 'reserved'}
     )
     self.assertLen(faces_region, len(self.fold['faces_vertices']))
     # The flaps and rivers tile the sheet, so every face lies in one of them
@@ -274,6 +274,42 @@ class MeshToFoldDictTest(absltest.TestCase):
     packed = bp.pack(bp.prepare(tree))
     rects = render_3d._candidate_root_rects(packed)  # pylint: disable=protected-access
     self.assertEqual(rects, [packed.flaps['bridge'].rect])
+
+  def test_reserved_regions_mapped_without_none_faces(self):
+    human = bp.load_example('human')
+    packed = bp.pack(
+        bp.prepare(human), bp.PackingConfig(remove_central_crease=True)
+    )
+    solved = bp.solve_best(
+        packed, bp.SolverConfig(remove_central_crease=True)
+    )
+    fold = bp.build_folded_mesh_3d(solved).to_fold_dict('human')
+    regions = fold['file_bp:regions']
+    faces_region = fold['faces_bp:region']
+
+    region_sticks = []
+    for region in regions:
+      region_sticks.extend(region['sticks'])
+    self.assertCountEqual(
+        region_sticks, [stick.name for stick in human.children]
+    )
+    kinds = {region['kind'] for region in regions}
+    self.assertIn('reserved', kinds)
+    self.assertContainsSubset(kinds, {'flap', 'river', 'reserved'})
+    self.assertNotIn(None, faces_region)
+    self.assertCountEqual(set(faces_region), range(len(regions)))
+    for region in regions:
+      if region['kind'] == 'reserved':
+        self.assertEmpty(region['sticks'])
+
+    # When flanking hinges stay flat, no empty reserved region is emitted.
+    solved_flat = bp.solve_best(packed)
+    fold_flat = bp.build_folded_mesh_3d(solved_flat).to_fold_dict('human')
+    self.assertNotIn(None, fold_flat['faces_bp:region'])
+    self.assertCountEqual(
+        set(fold_flat['faces_bp:region']),
+        range(len(fold_flat['file_bp:regions'])),
+    )
 
 
 def _total_length(fold, edge_mask):

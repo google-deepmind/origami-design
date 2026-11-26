@@ -1588,6 +1588,7 @@ def convert_packing_rectangles_to_shaping_flaps(
           scale_factor=scale_factor,
       )
       for rect in packing_rectangles
+      if not rect.name.startswith(packing_types.AXIS_FILLER_PREFIX)
   ]
   shaping_flaps = [
       ShapingFlap.from_centers(

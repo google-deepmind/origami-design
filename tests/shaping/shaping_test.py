@@ -1792,6 +1792,43 @@ class HeuristicsUnitTest(parameterized.TestCase):
     )
     self.assertEmpty(report.pose_gate.crossing)
 
+  def test_shape_succeeds_with_remove_central_crease_reservations(self):
+    design = bp.prepare(bp.load_example('human'))
+    packed = bp.pack(
+        design, bp.PackingConfig(remove_central_crease=True), packer='builtin'
+    )
+    self.assertNotEmpty(packed.reservations)
+    solved = bp.solve_best(packed, solver='builtin')
+
+    # `bus_adapter.legacy_inputs` must not emit non-limb `axis_filler_*`
+    # reservations into `flap_rectangles`.
+    packing_out, _ = bus_adapter.legacy_inputs(solved)
+    self.assertCountEqual(
+        [r.name for r in packing_out.flap_rectangles], list(packed.flaps.keys())
+    )
+
+    # `convert_packing_rectangles_to_shaping_flaps` must also skip
+    # `axis_filler_*` rectangles when given a raw `to_packing_output()`.
+    raw_packing = packed.to_packing_output()
+    flaps = shaping_elements.convert_packing_rectangles_to_shaping_flaps(
+        raw_packing.flap_rectangles,
+        packing_grid_size=packed.grid_size,
+        solving_grid_size=solved.grid_size,
+        base_cp=solved.creases,
+    )
+    self.assertCountEqual([f.name for f in flaps], list(packed.flaps.keys()))
+
+    shaped = bp.shape(solved)
+    self.assertIsInstance(shaped, bp.ShapedCreasePattern)
+    self.assertNotEmpty(shaped.creases.creases)
+
+    solved_rcc = bp.solve_best(
+        packed, bp.SolverConfig(remove_central_crease=True), solver='builtin'
+    )
+    shaped_rcc = bp.shape(solved_rcc)
+    self.assertIsInstance(shaped_rcc, bp.ShapedCreasePattern)
+    self.assertNotEmpty(shaped_rcc.creases.creases)
+
 
 if __name__ == '__main__':
   absltest.main()

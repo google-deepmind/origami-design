@@ -282,14 +282,17 @@ function show(model, stickFigure, entry) {
   updateStrainMetric();
 
   byId('regions').replaceChildren(...model.regions.map((region, r) => {
+    const hasSticks = region.sticks.length > 0;
     const chip = html(
         'button', {
           type: 'button',
           className: region.kind,
-          title: `${region.kind}: ${region.sticks.map(words).join(' + ')}`,
+          title: hasSticks ?
+              `${region.kind}: ${region.sticks.map(words).join(' + ')}` :
+              region.kind,
           ariaPressed: 'false',
         },
-        words(region.sticks.at(-1)));
+        hasSticks ? words(region.sticks.at(-1)) : region.kind);
     chip.addEventListener('click', () => toggleHighlight(r));
     return chip;
   }));

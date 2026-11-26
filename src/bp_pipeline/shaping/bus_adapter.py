@@ -106,9 +106,6 @@ def legacy_inputs(
   for r in packed.reservations:
     if r.id in ls_rect_by_id:
       flap_rectangles.append(ls_rect_by_id[r.id])
-    else:
-      res_name = r.id if r.id.startswith(prefix) else f'{prefix}_{r.id}'
-      flap_rectangles.append(r.rect.to_rectangle(name=res_name))
   packing_rivers = {
       r_id: r.to_packing_river(packed.grid_size)
       for r_id, r in packed.rivers.items()

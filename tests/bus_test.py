@@ -27,6 +27,7 @@ from bp_pipeline.crease_pattern import point
 from bp_pipeline.crease_pattern import visualize as cp_visualize
 from bp_pipeline.crease_pattern.parser import svg as svg_parser
 from bp_pipeline.packing import config as packing_config_lib
+from bp_pipeline.packing import types as packing_types
 from bp_pipeline.packing import utils_packing_svg
 from bp_pipeline.shaping import bus_adapter
 from bp_pipeline.solving import hinges as hinge_utils
@@ -389,6 +390,72 @@ class BusTest(parameterized.TestCase):
     self.assertEqual(unclipped_cap_r4.y_start, -4.0)
     self.assertEqual(unclipped_cap_r4.x_len, 20.0)
     self.assertEqual(unclipped_cap_r4.y_len, 8.0)
+
+  def test_reserved_region_and_packing_output_round_trip(self):
+    self.assertEqual(
+        [f.name for f in dataclasses.fields(bus.ReservedRegion)],
+        ['id', 'rect'],
+    )
+    region = bus.ReservedRegion(
+        id='axis_filler_0', rect=bus.GridRect(x=5, y=7, width=2, height=5)
+    )
+    with self.assertRaises(dataclasses.FrozenInstanceError):
+      region.id = 'other'  # type: ignore[misc]
+
+    sf = copy.deepcopy(example_trees.get_example_by_name('human'))
+    design = bus.DesignTree.from_stick_figure(sf)
+    pack_cfg = pipeline.PackingTaskConfig(
+        max_number_of_cps=1,
+        max_cps_per_grid_size=1,
+        max_retries=5,
+        sweep_timeout_seconds=30,
+        packing_config=packing_config_lib.PackingConfig(
+            remove_central_crease=True
+        ),
+    )
+    pack_res = pipeline.pack_crease_pattern(design, config=pack_cfg)
+    packed = bus.PackedCreasePattern.from_packing_output(
+        pack_res.packing_outputs[0], design=design
+    )
+    self.assertNotEmpty(packed.reservations)
+    self.assertTrue(
+        all(
+            r.id.startswith(packing_types.AXIS_FILLER_PREFIX)
+            for r in packed.reservations
+        )
+    )
+    self.assertFalse(
+        any(
+            fid.startswith(packing_types.AXIS_FILLER_PREFIX)
+            for fid in packed.flaps
+        )
+    )
+
+    reconstructed = bus.PackedCreasePattern.from_packing_output(
+        packed.to_packing_output(), design=design
+    )
+    self.assertEqual(reconstructed.reservations, packed.reservations)
+    self.assertEqual(reconstructed.flaps.keys(), packed.flaps.keys())
+
+    # Non-prefixed IDs are prefixed across PackingOutput round-trip.
+    custom = dataclasses.replace(
+        packed,
+        reservations=(
+            bus.ReservedRegion(id='strip_0', rect=packed.reservations[0].rect),
+        ),
+    )
+    custom_rt = bus.PackedCreasePattern.from_packing_output(
+        custom.to_packing_output(), design=design
+    )
+    self.assertEqual(
+        custom_rt.reservations,
+        (
+            bus.ReservedRegion(
+                id=f'{packing_types.AXIS_FILLER_PREFIX}_strip_0',
+                rect=packed.reservations[0].rect,
+            ),
+        ),
+    )
 
 
 if __name__ == '__main__':

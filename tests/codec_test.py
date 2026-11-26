@@ -358,6 +358,24 @@ class CodecTest(parameterized.TestCase):
     self.assertIn('rivers', decoded)
     self.assertIn('flaps', decoded)
 
+  def test_packed_cp_reservations_codec_and_backward_compat(self):
+    design = bp.prepare(bp.load_example('human'))
+    packed_plain = bp.pack(design)
+    self.assertEmpty(packed_plain.reservations)
+    encoded_plain = codec.to_dict(packed_plain)
+    self.assertNotIn('reservations', encoded_plain)
+    decoded_old = codec.from_dict(encoded_plain)
+    self.assertEqual(decoded_old.reservations, ())
+
+    packed_rcc = bp.pack(design, bp.PackingConfig(remove_central_crease=True))
+    self.assertNotEmpty(packed_rcc.reservations)
+    encoded_rcc = codec.to_dict(packed_rcc)
+    _assert_no_double_encoded_json(self, encoded_rcc)
+    self.assertIn('reservations', encoded_rcc)
+    decoded_rcc = codec.loads(codec.dumps(packed_rcc))
+    self.assertEqual(decoded_rcc.reservations, packed_rcc.reservations)
+    self.assertEqual(codec.to_dict(decoded_rcc), encoded_rcc)
+
 
 if __name__ == '__main__':
   absltest.main()

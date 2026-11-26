@@ -33,7 +33,8 @@ const PAPER_FILL = '#fffdf7';
 /** Fill per kind of packed region; `style.css` repeats these in its legend. */
 const REGION_FILLS = {
   flap: '#ead9b5',
-  river: '#b9d7ea'
+  river: '#b9d7ea',
+  reserved: '#d8d4cc'
 };
 const HIGHLIGHT_FILL = '#fcd34d';
 
