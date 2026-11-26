@@ -16,10 +16,10 @@
  * @fileoverview The studio page: loads models and wires up the controls.
  *
  * A showcase model is a directory `models/<slug>/` holding `shaped_3d.fold`,
- * `stick_figure.json` and `preview.png`, plus an entry in
- * `models/catalog.json` with descriptive text, colors and camera angle. Both
- * showcase models and local `.fold` files dropped onto the page fold through an
- * automatic 4-Act Multi-Stage Folding Schedule.
+ * `stick_figure.json` (plus `shaping_history.json` on newer models) and
+ * `preview.png`, plus an entry in `models/catalog.json` with descriptive text,
+ * colors and camera angle. Both showcase models and local `.fold` files dropped
+ * onto the page fold through an automatic 4-Act Multi-Stage Folding Schedule.
  */
 
 import {creasePatternSvg, drawCreasePattern, drawPacking, drawStickFigure} from './diagram.js';

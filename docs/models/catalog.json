@@ -172,5 +172,63 @@
       "azimuth": 36,
       "elevation": 18
     }
+  },
+  {
+    "slug": "castor-and-pollux",
+    "title": "Castor and Pollux",
+    "subtitle": "Mythological Twin Figures",
+    "summary": "Mirror-symmetric twin figures clasping hands across an open centerline bridge on an economical 28×28 box-pleated grid with width-2 tunics, sculpted heads, and four articulated leg pairs.",
+    "techniques": [
+      "Open Centerline Hand-Clasp Bridge",
+      "Width-2 Tunics & Sculpted Heads",
+      "Mirror-Symmetric Bipedal Stance"
+    ],
+    "pipeline_args": [
+      "--remove-central-crease"
+    ],
+    "colorTop": "#223A6C",
+    "colorBottom": "#F4E2BC",
+    "camera": {
+      "azimuth": 14,
+      "elevation": 16
+    }
+  },
+  {
+    "slug": "spinosaurus",
+    "title": "Spinosaurus",
+    "subtitle": "Spinosaurus aegyptiacus",
+    "summary": "Sail-backed theropod dinosaur sculpted on a 40×40 grid combining a four-blade dorsal neural-spine shaping-flap template, bilateral raptorial thumb-sickle templates, hooked crocodilian rostrum, and paddle tail.",
+    "techniques": [
+      "4-Blade Dorsal Sail Template",
+      "Corner-Template Thumb Claws",
+      "Crocodilian Rostrum",
+      "Paddle Tail"
+    ],
+    "pipeline_args": [],
+    "colorTop": "#8A3424",
+    "colorBottom": "#E0CAA4",
+    "camera": {
+      "azimuth": 52,
+      "elevation": 18
+    }
+  },
+  {
+    "slug": "bounding-red-kangaroo",
+    "title": "Bounding Red Kangaroo",
+    "subtitle": "Osphranter rufus",
+    "summary": "Mid-leap macropod sculpted on a compact 26×26 grid with width-2 muscular haunches, splayed hopping hindlegs, tucked forepaws, pricked ears, and counterbalance tail.",
+    "techniques": [
+      "Width-2 Muscular Haunches",
+      "Hopping Hindlegs & Long Pes",
+      "Cupped Upright Ears",
+      "Counterbalance Tail"
+    ],
+    "pipeline_args": [],
+    "colorTop": "#B04E2A",
+    "colorBottom": "#F2E2C6",
+    "camera": {
+      "azimuth": 54,
+      "elevation": 18
+    }
   }
 ]

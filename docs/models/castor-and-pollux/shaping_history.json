@@ -1,0 +1,147 @@
+[
+  {
+    "tool": "rotation_3d",
+    "arguments": {
+      "rotations": [
+        {
+          "element_name": "clasp_base",
+          "az": -180.0,
+          "el": -10.0
+        },
+        {
+          "element_name": "inner_forearm_R",
+          "az": -90.0,
+          "el": 12.0
+        },
+        {
+          "element_name": "inner_forearm_L",
+          "az": 90.0,
+          "el": 12.0
+        },
+        {
+          "element_name": "inner_upper_arm_R",
+          "az": -90.0,
+          "el": 36.0
+        },
+        {
+          "element_name": "inner_upper_arm_L",
+          "az": 90.0,
+          "el": 36.0
+        },
+        {
+          "element_name": "neck_R",
+          "az": -90.0,
+          "el": 88.0
+        },
+        {
+          "element_name": "outer_upper_arm_R",
+          "az": -90.0,
+          "el": -38.0
+        },
+        {
+          "element_name": "torso_tunic_R",
+          "az": -90.0,
+          "el": -88.0
+        },
+        {
+          "element_name": "torso_out_R",
+          "az": -90.0,
+          "el": -88.0
+        },
+        {
+          "element_name": "torso_in_R",
+          "az": -90.0,
+          "el": -88.0
+        },
+        {
+          "element_name": "neck_L",
+          "az": 90.0,
+          "el": 88.0
+        },
+        {
+          "element_name": "outer_upper_arm_L",
+          "az": 90.0,
+          "el": -38.0
+        },
+        {
+          "element_name": "torso_tunic_L",
+          "az": 90.0,
+          "el": -88.0
+        },
+        {
+          "element_name": "torso_out_L",
+          "az": 90.0,
+          "el": -88.0
+        },
+        {
+          "element_name": "torso_in_L",
+          "az": 90.0,
+          "el": -88.0
+        },
+        {
+          "element_name": "head_R",
+          "az": -90.0,
+          "el": 88.0
+        },
+        {
+          "element_name": "outer_forearm_R",
+          "az": -90.0,
+          "el": -64.0
+        },
+        {
+          "element_name": "outer_thigh_R",
+          "az": -90.0,
+          "el": -68.0
+        },
+        {
+          "element_name": "inner_thigh_R",
+          "az": 79.0,
+          "el": -68.0
+        },
+        {
+          "element_name": "head_L",
+          "az": 90.0,
+          "el": 88.0
+        },
+        {
+          "element_name": "outer_forearm_L",
+          "az": 90.0,
+          "el": -64.0
+        },
+        {
+          "element_name": "outer_thigh_L",
+          "az": 90.0,
+          "el": -68.0
+        },
+        {
+          "element_name": "inner_thigh_L",
+          "az": -79.0,
+          "el": -68.0
+        },
+        {
+          "element_name": "outer_shin_R",
+          "az": -90.0,
+          "el": -82.0
+        },
+        {
+          "element_name": "inner_shin_R",
+          "az": 75.0,
+          "el": -82.0
+        },
+        {
+          "element_name": "outer_shin_L",
+          "az": 90.0,
+          "el": -82.0
+        },
+        {
+          "element_name": "inner_shin_L",
+          "az": -75.0,
+          "el": -82.0
+        }
+      ]
+    },
+    "ok": true,
+    "message": "rotation_3d ok (+757 creases). Rotated ['clasp_base', 'inner_forearm_L', 'inner_forearm_R', 'inner_shin_L', 'inner_shin_R', 'inner_thigh_L', 'inner_thigh_R', 'neck_L', 'neck_R', 'outer_forearm_L', 'outer_forearm_R', 'outer_shin_L', 'outer_shin_R', 'outer_thigh_L', 'outer_thigh_R', 'outer_upper_arm_L', 'outer_upper_arm_R', 'torso_in_L', 'torso_in_R', 'torso_out_L', 'torso_out_R', 'torso_tunic_L', 'torso_tunic_R']. Skipped: inner_upper_arm_R (zero_angle); inner_upper_arm_L (zero_angle); head_R (zero_angle); head_L (zero_angle).",
+    "num_creases": 1244
+  }
+]

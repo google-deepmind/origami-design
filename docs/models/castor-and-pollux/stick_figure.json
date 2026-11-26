@@ -1,0 +1,335 @@
+{
+  "name": "Castor and Pollux",
+  "category": "humans",
+  "color_top": [
+    34,
+    58,
+    108
+  ],
+  "color_bottom": [
+    244,
+    226,
+    188
+  ],
+  "complexity": 3,
+  "root": "clasp_hands",
+  "children": [
+    {
+      "name": "clasp_hands",
+      "start": "j_clasp",
+      "end": "j_clasp_top",
+      "azimuth_angle": 0,
+      "elevation_angle": 10,
+      "length": 1,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "clasp_base",
+      "start": "j_clasp",
+      "end": "j_clasp_bot",
+      "azimuth_angle": 180,
+      "elevation_angle": -10,
+      "length": 1,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_forearm_L",
+      "start": "j_clasp",
+      "end": "j_in_el_L",
+      "azimuth_angle": 90,
+      "elevation_angle": 12,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_upper_arm_L",
+      "start": "j_in_el_L",
+      "end": "j_sh_L",
+      "azimuth_angle": 90,
+      "elevation_angle": 36,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck_L",
+      "start": "j_sh_L",
+      "end": "j_neck_L",
+      "azimuth_angle": 90,
+      "elevation_angle": 88,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "head_L",
+      "start": "j_neck_L",
+      "end": "j_head_L",
+      "azimuth_angle": 90,
+      "elevation_angle": 88,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_upper_arm_L",
+      "start": "j_sh_L",
+      "end": "j_out_el_L",
+      "azimuth_angle": 90,
+      "elevation_angle": -38,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_forearm_L",
+      "start": "j_out_el_L",
+      "end": "j_out_hand_L",
+      "azimuth_angle": 90,
+      "elevation_angle": -64,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "torso_tunic_L",
+      "start": "j_sh_L",
+      "end": "j_waist_L",
+      "azimuth_angle": 90,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "torso_out_L",
+      "start": "j_sh_L",
+      "end": "j_hip_out_L",
+      "azimuth_angle": 90,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_thigh_L",
+      "start": "j_hip_out_L",
+      "end": "j_out_kn_L",
+      "azimuth_angle": 90,
+      "elevation_angle": -68,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_shin_L",
+      "start": "j_out_kn_L",
+      "end": "j_out_ft_L",
+      "azimuth_angle": 90,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "torso_in_L",
+      "start": "j_sh_L",
+      "end": "j_hip_in_L",
+      "azimuth_angle": 90,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_thigh_L",
+      "start": "j_hip_in_L",
+      "end": "j_in_kn_L",
+      "azimuth_angle": -90,
+      "elevation_angle": -68,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_shin_L",
+      "start": "j_in_kn_L",
+      "end": "j_in_ft_L",
+      "azimuth_angle": -90,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_forearm_R",
+      "start": "j_clasp",
+      "end": "j_in_el_R",
+      "azimuth_angle": -90,
+      "elevation_angle": 12,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_upper_arm_R",
+      "start": "j_in_el_R",
+      "end": "j_sh_R",
+      "azimuth_angle": -90,
+      "elevation_angle": 36,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck_R",
+      "start": "j_sh_R",
+      "end": "j_neck_R",
+      "azimuth_angle": -90,
+      "elevation_angle": 88,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "head_R",
+      "start": "j_neck_R",
+      "end": "j_head_R",
+      "azimuth_angle": -90,
+      "elevation_angle": 88,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_upper_arm_R",
+      "start": "j_sh_R",
+      "end": "j_out_el_R",
+      "azimuth_angle": -90,
+      "elevation_angle": -38,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_forearm_R",
+      "start": "j_out_el_R",
+      "end": "j_out_hand_R",
+      "azimuth_angle": -90,
+      "elevation_angle": -64,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "torso_tunic_R",
+      "start": "j_sh_R",
+      "end": "j_waist_R",
+      "azimuth_angle": -90,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "torso_out_R",
+      "start": "j_sh_R",
+      "end": "j_hip_out_R",
+      "azimuth_angle": -90,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_thigh_R",
+      "start": "j_hip_out_R",
+      "end": "j_out_kn_R",
+      "azimuth_angle": -90,
+      "elevation_angle": -68,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "outer_shin_R",
+      "start": "j_out_kn_R",
+      "end": "j_out_ft_R",
+      "azimuth_angle": -90,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "torso_in_R",
+      "start": "j_sh_R",
+      "end": "j_hip_in_R",
+      "azimuth_angle": -90,
+      "elevation_angle": -88,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_thigh_R",
+      "start": "j_hip_in_R",
+      "end": "j_in_kn_R",
+      "azimuth_angle": 90,
+      "elevation_angle": -68,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "inner_shin_R",
+      "start": "j_in_kn_R",
+      "end": "j_in_ft_R",
+      "azimuth_angle": 90,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      28,
+      0,
+      5
+    ],
+    [
+      28,
+      0,
+      2
+    ],
+    [
+      22,
+      -16,
+      6
+    ],
+    [
+      -22,
+      16,
+      6
+    ],
+    [
+      0,
+      28,
+      4
+    ],
+    [
+      0,
+      -28,
+      4
+    ],
+    [
+      18,
+      12,
+      22
+    ]
+  ]
+}

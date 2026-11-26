@@ -1,0 +1,129 @@
+[
+  {
+    "tool": "rotation_3d",
+    "arguments": {
+      "rotations": [
+        {
+          "element_name": "spine_r1",
+          "az": -180.0,
+          "el": 12.0
+        },
+        {
+          "element_name": "femur_r",
+          "az": -90.0,
+          "el": -44.0
+        },
+        {
+          "element_name": "femur_l",
+          "az": 90.0,
+          "el": -44.0
+        },
+        {
+          "element_name": "humerus_r",
+          "az": -83.0,
+          "el": -32.0
+        },
+        {
+          "element_name": "neck",
+          "az": 0.0,
+          "el": 36.0
+        },
+        {
+          "element_name": "humerus_l",
+          "az": 83.0,
+          "el": -32.0
+        },
+        {
+          "element_name": "spine_r2",
+          "az": -180.0,
+          "el": 0.0
+        },
+        {
+          "element_name": "tibia_r",
+          "az": -90.0,
+          "el": -82.0
+        },
+        {
+          "element_name": "tibia_l",
+          "az": 90.0,
+          "el": -82.0
+        },
+        {
+          "element_name": "manus_claw_r",
+          "az": -45.67,
+          "el": -64.0
+        },
+        {
+          "element_name": "croc_snout",
+          "az": 0.0,
+          "el": -4.0
+        },
+        {
+          "element_name": "manus_claw_l",
+          "az": 45.67,
+          "el": -64.0
+        },
+        {
+          "element_name": "tail_r3",
+          "az": -180.0,
+          "el": -10.0
+        },
+        {
+          "element_name": "webbed_pes_r",
+          "az": -47.0,
+          "el": -86.0
+        },
+        {
+          "element_name": "webbed_pes_l",
+          "az": 47.0,
+          "el": -86.0
+        },
+        {
+          "element_name": "hooked_rostrum",
+          "az": 0.0,
+          "el": -22.0
+        },
+        {
+          "element_name": "tail_r4",
+          "az": -180.0,
+          "el": -4.0
+        },
+        {
+          "element_name": "dorsal_sail_tall",
+          "az": 180.0,
+          "el": 84.0
+        },
+        {
+          "element_name": "sacral_sail_tall",
+          "az": 180.0,
+          "el": 78.0
+        },
+        {
+          "element_name": "caudal_fin_mid",
+          "az": 180.0,
+          "el": 66.0
+        },
+        {
+          "element_name": "paddle_tail_tip",
+          "az": 180.0,
+          "el": 42.0
+        }
+      ]
+    },
+    "ok": true,
+    "message": "rotation_3d ok (+1236 creases). Rotated ['caudal_fin_mid', 'croc_snout', 'dorsal_sail_tall', 'femur_l', 'femur_r', 'hooked_rostrum', 'humerus_l', 'humerus_r', 'manus_claw_l_1', 'manus_claw_r_1', 'neck', 'paddle_tail_tip', 'sacral_sail_tall', 'spine_r1', 'spine_r2', 'tail_r3', 'tail_r4', 'tibia_l', 'tibia_r', 'webbed_pes_l', 'webbed_pes_r'].",
+    "num_creases": 1896
+  },
+  {
+    "tool": "shape_flap_template",
+    "arguments": {
+      "element_name": "thumb_sickle_l",
+      "style": "tuck",
+      "open_percent": 0.45,
+      "verify_fold": true
+    },
+    "ok": true,
+    "message": "shape_flap_template ok (+140 creases). Sculpted shaping_flap templates (tuck): thumb_sickle_l=simple_fold, thumb_sickle_r=simple_fold (skipped: caudal_fin_mid, dorsal_sail_tall, paddle_tail_tip, sacral_sail_tall)",
+    "num_creases": 2036
+  }
+]

@@ -38,24 +38,30 @@ _CATALOG = json.loads(
 _PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 
 _MODELS_WITH_BASE_FOLD_ANGLE = frozenset({
+    'bounding-red-kangaroo',
     'boxer-crab',
     'bull-moose',
+    'castor-and-pollux',
     'crested-hoopoe',
     'emperor-scorpion',
     'golden-eagle',
     'indian-peacock',
     'king-cobra',
+    'spinosaurus',
     'triceratops',
     'winged-pegasus',
     'wyrmlord-dragon',
 })
 
 _MODELS_WITH_UNMODIFIED_BASE_TOPOLOGY = frozenset({
+    'bounding-red-kangaroo',
     'boxer-crab',
     'bull-moose',
+    'castor-and-pollux',
     'crested-hoopoe',
     'emperor-scorpion',
     'indian-peacock',
+    'spinosaurus',
 })
 
 
@@ -107,6 +113,12 @@ class ShowcaseTest(parameterized.TestCase):
 
     preview = (_MODELS_DIR / entry['slug'] / 'preview.png').read_bytes()
     self.assertStartsWith(preview, _PNG_SIGNATURE)
+
+    if (_MODELS_DIR / entry['slug'] / 'shaping_history.json').is_file():
+      self.assertIn('pipeline_args', entry)
+      self.assertIsInstance(entry['pipeline_args'], list)
+      for arg in entry['pipeline_args']:
+        self.assertIsInstance(arg, str)
 
   @parameterized.named_parameters(_each_model())
   def test_fold_file_folds_its_crease_pattern(self, entry):
@@ -309,6 +321,20 @@ class ShowcaseTest(parameterized.TestCase):
           check=False,
       )
       self.assertEqual(res.returncode, 0, msg=res.stderr or res.stdout)
+
+  @parameterized.named_parameters(_each_model())
+  def test_recorded_history_schema(self, entry):
+    slug = entry['slug']
+    history_path = _MODELS_DIR / slug / 'shaping_history.json'
+    if not history_path.is_file():
+      return
+
+    history = json.loads(history_path.read_text(encoding='utf-8'))
+    self.assertIsInstance(history, list)
+    self.assertNotEmpty(history)
+    for call in history:
+      self.assertIsInstance(call.get('tool'), str)
+      self.assertIsInstance(call.get('arguments'), dict)
 
 
 if __name__ == '__main__':

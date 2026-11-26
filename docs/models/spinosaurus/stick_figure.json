@@ -1,0 +1,295 @@
+{
+  "name": "Spinosaurus",
+  "category": "dinosaurs",
+  "color_top": [
+    138,
+    52,
+    36
+  ],
+  "color_bottom": [
+    224,
+    202,
+    164
+  ],
+  "complexity": 4,
+  "root": "torso",
+  "children": [
+    {
+      "name": "torso",
+      "start": "j_pelvis",
+      "end": "j_shoulder",
+      "azimuth_angle": 0,
+      "elevation_angle": 8,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "neck",
+      "start": "j_shoulder",
+      "end": "j_head",
+      "azimuth_angle": 0,
+      "elevation_angle": 36,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "croc_snout",
+      "start": "j_head",
+      "end": "j_rostrum",
+      "azimuth_angle": 0,
+      "elevation_angle": -4,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "hooked_rostrum",
+      "start": "j_rostrum",
+      "end": "j_jaw_tip",
+      "azimuth_angle": 0,
+      "elevation_angle": -22,
+      "length": 2,
+      "width": 0.25,
+      "shaping_flap": false
+    },
+    {
+      "name": "humerus_l",
+      "start": "j_shoulder",
+      "end": "j_wrist_l",
+      "azimuth_angle": 58,
+      "elevation_angle": -32,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "manus_claw_l",
+      "start": "j_wrist_l",
+      "end": "j_claw_l",
+      "azimuth_angle": 36,
+      "elevation_angle": -64,
+      "length": 4,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "thumb_sickle_l",
+      "start": "j_wrist_l",
+      "end": "j_sickle_l",
+      "azimuth_angle": 18,
+      "elevation_angle": -38,
+      "length": 4,
+      "width": 0.5,
+      "shaping_flap": true
+    },
+    {
+      "name": "humerus_r",
+      "start": "j_shoulder",
+      "end": "j_wrist_r",
+      "azimuth_angle": -58,
+      "elevation_angle": -32,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "manus_claw_r",
+      "start": "j_wrist_r",
+      "end": "j_claw_r",
+      "azimuth_angle": -36,
+      "elevation_angle": -64,
+      "length": 4,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "thumb_sickle_r",
+      "start": "j_wrist_r",
+      "end": "j_sickle_r",
+      "azimuth_angle": -18,
+      "elevation_angle": -38,
+      "length": 4,
+      "width": 0.5,
+      "shaping_flap": true
+    },
+    {
+      "name": "femur_l",
+      "start": "j_pelvis",
+      "end": "j_knee_l",
+      "azimuth_angle": 108,
+      "elevation_angle": -44,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "tibia_l",
+      "start": "j_knee_l",
+      "end": "j_ankle_l",
+      "azimuth_angle": 98,
+      "elevation_angle": -82,
+      "length": 4,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "webbed_pes_l",
+      "start": "j_ankle_l",
+      "end": "j_foot_l",
+      "azimuth_angle": 32,
+      "elevation_angle": -86,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "femur_r",
+      "start": "j_pelvis",
+      "end": "j_knee_r",
+      "azimuth_angle": -108,
+      "elevation_angle": -44,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "tibia_r",
+      "start": "j_knee_r",
+      "end": "j_ankle_r",
+      "azimuth_angle": -98,
+      "elevation_angle": -82,
+      "length": 4,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "webbed_pes_r",
+      "start": "j_ankle_r",
+      "end": "j_foot_r",
+      "azimuth_angle": -32,
+      "elevation_angle": -86,
+      "length": 3,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "spine_r1",
+      "start": "j_pelvis",
+      "end": "j_s1",
+      "azimuth_angle": 180,
+      "elevation_angle": 12,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "dorsal_sail_tall",
+      "start": "j_s1",
+      "end": "j_sail1",
+      "azimuth_angle": 180,
+      "elevation_angle": 84,
+      "length": 4,
+      "width": 1,
+      "shaping_flap": true
+    },
+    {
+      "name": "spine_r2",
+      "start": "j_s1",
+      "end": "j_s2",
+      "azimuth_angle": 180,
+      "elevation_angle": 0,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "sacral_sail_tall",
+      "start": "j_s2",
+      "end": "j_sail2",
+      "azimuth_angle": 180,
+      "elevation_angle": 78,
+      "length": 4,
+      "width": 1,
+      "shaping_flap": true
+    },
+    {
+      "name": "tail_r3",
+      "start": "j_s2",
+      "end": "j_s3",
+      "azimuth_angle": 180,
+      "elevation_angle": -10,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "caudal_fin_mid",
+      "start": "j_s3",
+      "end": "j_sail3",
+      "azimuth_angle": 180,
+      "elevation_angle": 66,
+      "length": 3,
+      "width": 1,
+      "shaping_flap": true
+    },
+    {
+      "name": "tail_r4",
+      "start": "j_s3",
+      "end": "j_s4",
+      "azimuth_angle": 180,
+      "elevation_angle": -4,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "paddle_tail_tip",
+      "start": "j_s4",
+      "end": "j_sail4",
+      "azimuth_angle": 180,
+      "elevation_angle": 42,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": true
+    }
+  ],
+  "views": [
+    [
+      30,
+      28,
+      18
+    ],
+    [
+      -30,
+      28,
+      18
+    ],
+    [
+      30,
+      -28,
+      18
+    ],
+    [
+      -30,
+      -28,
+      18
+    ],
+    [
+      0,
+      36,
+      13
+    ],
+    [
+      0,
+      -36,
+      13
+    ],
+    [
+      34,
+      0,
+      14
+    ]
+  ]
+}
