@@ -1203,6 +1203,7 @@ class EndToEndPipelineTest(parameterized.TestCase):
         'allow_paired_axis_placement': False,
         'max_cps_per_grid_size': 2,
         'max_number_of_cps': 1,
+        'grid_mode': 'v2',
         'max_retries': 30,
         'packer': 'default',
         'packer_config': None,

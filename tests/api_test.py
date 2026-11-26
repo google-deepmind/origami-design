@@ -337,9 +337,9 @@ class ApiTest(parameterized.TestCase):
       )
       bp.pack(design, single_grid_cfg)
       self.assertLen(seen_calls, 4)
-      expected_grid = design.source.get_packing_gridsize() + (
-          4 if design.source.is_symmetric_tree else 2
-      )
+      expected_grid = design.source.get_packing_gridsize(
+          mode=single_grid_cfg.grid_mode
+      ) + (4 if design.source.is_symmetric_tree else 2)
       self.assertEqual(seen_calls[3]['grid_size'], expected_grid)
 
       # Explicit packer='default' must override config.packer.
@@ -354,7 +354,7 @@ class ApiTest(parameterized.TestCase):
               timeout_seconds=30.0,
               per_grid_timeout_seconds=4.5,
               max_solutions=3,
-              grid_size=expected_grid,
+              grid_size=14,
           ),
           design=design,
       )
@@ -363,6 +363,7 @@ class ApiTest(parameterized.TestCase):
       self.assertEqual(resolved_default_cfg.max_cps_per_grid_size, 3)
       self.assertEqual(resolved_default_cfg.max_number_of_cps, 3)
       self.assertEqual(resolved_default_cfg.extra_grid_size, 2)
+      self.assertEqual(resolved_default_cfg.grid_mode, 'v2')
       self.assertEqual(resolved_default_cfg.max_retries, 1)
 
       resolved_plugin_opts = api_mod._resolve_packer_options(
@@ -373,6 +374,132 @@ class ApiTest(parameterized.TestCase):
           design=design,
       )
       self.assertEqual(resolved_plugin_opts.timeout_seconds, 42.0)
+
+      star_sf = bp.StickFigure(
+          name='asym_five_star',
+          category='test',
+          complexity=1,
+          root='f0',
+          children=[
+              bp.Stick(
+                  name='f0', start='c', end='t0', azimuth_angle=0, length=2
+              ),
+              bp.Stick(
+                  name='f1', start='c', end='t1', azimuth_angle=35, length=2
+              ),
+              bp.Stick(
+                  name='f2', start='c', end='t2', azimuth_angle=90, length=2
+              ),
+              bp.Stick(
+                  name='f3', start='c', end='t3', azimuth_angle=170, length=2
+              ),
+              bp.Stick(
+                  name='f4', start='c', end='t4', azimuth_angle=280, length=2
+              ),
+          ],
+      )
+      star_design = bp.prepare(star_sf)
+      self.assertEqual(star_design.min_grid_size, 5)
+      self.assertEqual(star_design.source.get_packing_gridsize(mode='v4'), 8)
+      bp.pack(
+          star_design,
+          bp.PackingTaskConfig(
+              packing_config=fast_base.packing_config,
+              extra_grid_size=1,
+              max_retries=1,
+              packer='test_recording_packer',
+          ),
+      )
+      self.assertEqual(seen_calls[-1]['grid_size'], 9)
+
+      split_sf = bp.StickFigure(
+          name='split_sym_after_merge',
+          category='test',
+          complexity=1,
+          root='torso',
+          children=[
+              bp.Stick(
+                  name='torso',
+                  start='hips',
+                  end='shoulders',
+                  azimuth_angle=0,
+                  elevation_angle=90.0,
+                  length=4,
+              ),
+              bp.Stick(
+                  name='head',
+                  start='shoulders',
+                  end='head_top',
+                  azimuth_angle=0,
+                  elevation_angle=90.0,
+                  length=1,
+              ),
+              bp.Stick(
+                  name='right_arm_1',
+                  start='shoulders',
+                  end='right_arm_split',
+                  azimuth_angle=-165,
+                  elevation_angle=-20.0,
+                  length=1,
+              ),
+              bp.Stick(
+                  name='right_arm_2',
+                  start='right_arm_split',
+                  end='right_hand',
+                  azimuth_angle=-165,
+                  elevation_angle=-20.0,
+                  length=2,
+              ),
+              bp.Stick(
+                  name='left_arm',
+                  start='shoulders',
+                  end='left_hand',
+                  azimuth_angle=165,
+                  elevation_angle=-20.0,
+                  length=3,
+              ),
+              bp.Stick(
+                  name='right_leg',
+                  start='hips',
+                  end='right_foot',
+                  azimuth_angle=-120,
+                  elevation_angle=-60.0,
+                  length=3,
+              ),
+              bp.Stick(
+                  name='left_leg',
+                  start='hips',
+                  end='left_foot',
+                  azimuth_angle=120,
+                  elevation_angle=-60.0,
+                  length=3,
+              ),
+          ],
+      )
+      split_design = bp.prepare(split_sf)
+      self.assertFalse(split_design.source.is_symmetric_tree)
+      self.assertTrue(split_design.is_symmetric)
+      expected_v4 = split_design.merged.get_packing_gridsize(mode='v4')
+      self.assertEqual(expected_v4, 10)
+      bp.pack(
+          split_design,
+          bp.PackingTaskConfig(
+              packing_config=fast_base.packing_config,
+              extra_grid_size=1,
+              max_retries=1,
+              packer='test_recording_packer',
+          ),
+      )
+      self.assertEqual(seen_calls[-1]['grid_size'], 12)
+
+      expected_v2 = split_design.merged.get_packing_gridsize()
+      split_default_cfg = api_mod._apply_packer_options_to_default_config(
+          fast_base,
+          bp.PackerOptions(grid_size=expected_v2 + 2),
+          design=split_design,
+      )
+      self.assertEqual(split_default_cfg.extra_grid_size, 1)
+      self.assertEqual(split_default_cfg.grid_mode, 'v2')
     finally:
       plugins_mod._PACKERS.pop('test_recording_packer', None)
 

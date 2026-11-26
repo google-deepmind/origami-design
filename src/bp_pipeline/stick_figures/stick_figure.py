@@ -27,13 +27,13 @@ import math
 from typing import Any, Literal, Self, TypeAlias, TypedDict
 
 import immutabledict
-import networkx as nx
 import numpy as np
 
+from ..packing import grid_size as packing_grid_size
 from . import angle_utils
 from . import stick as stick_lib
 
-GridMode: TypeAlias = Literal['v1', 'v0_include_width', 'v2']
+GridMode: TypeAlias = Literal['v1', 'v0_include_width', 'v2', 'v4']
 DEFAULT_TOLERANCE = 1e-3
 
 
@@ -79,30 +79,7 @@ def get_longest_path_in_tree(joints_to_sticks: Mapping[str, 'Joint']) -> int:
   Returns:
     The sum of lengths of sticks along the longest path.
   """
-  if not joints_to_sticks:
-    return 0
-
-  # Built directly here to avoid an import cycle with converters.py.
-  graph = nx.Graph()
-  stick_by_name = {}
-  for joint in joints_to_sticks.values():
-    for stick in joint.sticks:
-      stick_by_name[stick.name] = stick
-
-  for stick in stick_by_name.values():
-    graph.add_edge(stick.start, stick.end, weight=stick.length)
-
-  if not graph.nodes:
-    return 0
-
-  diameter = 0
-  for component in nx.connected_components(graph):
-    subgraph = graph.subgraph(component)
-    component_diameter = nx.diameter(subgraph, weight='weight')
-    if component_diameter > diameter:
-      diameter = component_diameter
-
-  return int(diameter)
+  return packing_grid_size.longest_path_in_joints(joints_to_sticks)
 
 
 def has_overlapping_sticks(
@@ -145,11 +122,30 @@ def has_overlapping_sticks(
   return False
 
 
+def _v4_level_shifter_flap_dim(
+    stick: stick_lib.Stick, use_level_shifter: bool
+) -> int:
+  """Returns packed flap side length matching width-2 level-shifter pockets."""
+  dim = int(stick.length) * 2
+  if use_level_shifter and stick.requires_level_shifter:
+    width = round(stick.width)
+    if width != 2:
+      raise ValueError(
+          'Sacrificial-pocket level shifters currently support width == 2,'
+          f' got width={stick.width}.'
+      )
+    dim += 2 * (width - 1)
+  return dim
+
+
 def calculate_grid_size(
     stick_figure: 'StickFigure',
-    sticks: list[stick_lib.Stick] | None = None,
+    sticks: Sequence[stick_lib.Stick] | None = None,
     mode: GridMode = 'v2',
     use_longest_path: bool = True,
+    use_level_shifter: bool = False,
+    is_symmetric: bool | None = None,
+    flap_dim_fn: Callable[[stick_lib.Stick, bool], int] | None = None,
 ) -> int:
   """Calculate the required grid size to pack sticks for a list of sticks.
 
@@ -166,13 +162,40 @@ def calculate_grid_size(
       sticks. This is the default mode. - 'v0_include_width': Sum of (lengths +
       width - 1) / 2. This accounts for the width of the stick. Here one unit of
       width, is assumed to be equivalent to a unit of length in the additional
-      space required to pack it.
+      space required to pack it. - 'v4': Chebyshev (`D_inf`) pigeonhole and
+      tree-diameter lower bound for backtracking square-flap placement
+      (`validate_candidate`, not `shaping_flap` rectangles), combining
+      single-stick center bounds, leaf-pair separation, full-grid `D x D` bucket
+      counting, and (when mirrored `is_symmetric`) half-grid separation (not
+      `allow_paired_axis_placement`).
     use_longest_path: If True, grid size is max(mode calculation, longest path
       in tree).
+    use_level_shifter: Whether level-shifter pocket margins are included when
+      `mode == 'v4'`.
+    is_symmetric: Optional mirrored symmetric-packing override (defaults to
+      `stick_figure.is_symmetric_tree` before chain merging).
+    flap_dim_fn: Optional `(stick, use_level_shifter) -> int` callback for `mode
+      == 'v4'`. When `None` and `use_level_shifter=True`, computes the width-2
+      sacrificial-pocket flap dimension.
 
   Returns:
     The calculated grid size as an integer.
   """
+  if mode == 'v4':
+    effective_flap_dim_fn = (
+        _v4_level_shifter_flap_dim
+        if flap_dim_fn is None and use_level_shifter
+        else flap_dim_fn
+    )
+    return packing_grid_size.calculate_v4_grid_size(
+        stick_figure,
+        sticks=sticks,
+        use_longest_path=use_longest_path,
+        use_level_shifter=use_level_shifter,
+        is_symmetric=is_symmetric,
+        flap_dim_fn=effective_flap_dim_fn,
+    )
+
   joints = stick_figure.joints
   sticks_to_consider = sticks if sticks is not None else stick_figure.children
 
@@ -425,10 +448,26 @@ class StickFigure:
   def is_symmetric_tree(self) -> bool:
     return self._is_symmetric_tree
 
-  def get_packing_gridsize(self) -> int:
-    """Get the require grid size of the stick figure for packing."""
-    grid_size = calculate_grid_size(self, use_longest_path=True)
-    if self.is_symmetric_tree and grid_size % 2 == 1:
+  def get_packing_gridsize(
+      self,
+      use_level_shifter: bool = False,
+      mode: GridMode = 'v2',
+      is_symmetric: bool | None = None,
+      flap_dim_fn: Callable[[stick_lib.Stick, bool], int] | None = None,
+  ) -> int:
+    """Gets the required grid size of the stick figure for packing."""
+    effective_is_sym = (
+        self.is_symmetric_tree if is_symmetric is None else is_symmetric
+    )
+    grid_size = calculate_grid_size(
+        self,
+        mode=mode,
+        use_longest_path=True,
+        use_level_shifter=use_level_shifter,
+        is_symmetric=effective_is_sym,
+        flap_dim_fn=flap_dim_fn,
+    )
+    if effective_is_sym and grid_size % 2 == 1:
       grid_size += 1
     return grid_size
 

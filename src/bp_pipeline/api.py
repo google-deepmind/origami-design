@@ -415,11 +415,11 @@ def _resolve_packer_options(
       and task_cfg.extra_grid_size != 0
       and task_cfg.max_retries == 1
   ):
-    base_g = design.source.get_packing_gridsize()
-    extra = task_cfg.extra_grid_size
-    target_grid = base_g + (
-        extra * 2 if design.source.is_symmetric_tree else extra
+    base_g = pipeline.get_base_grid_size(
+        design.merged, task_cfg, is_symmetric=design.is_symmetric
     )
+    extra = task_cfg.extra_grid_size
+    target_grid = base_g + (extra * 2 if design.is_symmetric else extra)
 
   return PackerOptions(
       timeout_seconds=timeout_seconds,
@@ -454,9 +454,12 @@ def _apply_packer_options_to_default_config(
         task_cfg.max_number_of_cps, opts.max_solutions
     )
   if opts.grid_size is not None:
-    base_g = design.source.get_packing_gridsize()
+    base_g = design.merged.get_packing_gridsize(
+        use_level_shifter=task_cfg.packing_config.use_level_shifter,
+        is_symmetric=design.is_symmetric,
+    )
     delta = opts.grid_size - base_g
-    step = 2 if design.source.is_symmetric_tree else 1
+    step = 2 if design.is_symmetric else 1
     if delta < 0 or delta % step != 0:
       raise PackingFailedError(
           f'Invalid grid_size={opts.grid_size} for base grid {base_g}'
@@ -464,6 +467,7 @@ def _apply_packer_options_to_default_config(
       )
     updates['extra_grid_size'] = delta // step
     updates['max_retries'] = 1
+    updates['grid_mode'] = 'v2'
   return dataclasses.replace(task_cfg, **updates) if updates else task_cfg
 
 

@@ -27,6 +27,7 @@ from ..stick_figures import stick as stick_lib
 from ..stick_figures import stick_figure as stick_figure_lib
 from . import compute_ridges
 from . import config as config_lib
+from . import grid_size as grid_size_lib
 from . import level_shifter
 from . import packing_output
 from . import scoring
@@ -442,7 +443,12 @@ def find_tiling_and_generate_crease_pattern(
     is_symmetric = tree.is_symmetric_tree
 
   if grid_size is None:
-    grid_size = tree.get_packing_gridsize()
+    grid_size = grid_size_lib.calculate_v4_grid_size(
+        tree,
+        use_level_shifter=config.use_level_shifter,
+        is_symmetric=is_symmetric and not allow_paired_axis_placement,
+        flap_dim_fn=utils_packing_flaps.get_flap_dim,
+    )
 
   # Grid size must be even for symmetric packing.
   if is_symmetric and grid_size % 2 == 1:

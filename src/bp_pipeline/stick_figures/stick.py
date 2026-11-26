@@ -26,7 +26,7 @@ import numpy as np
 
 from . import angle_utils
 
-GridMode: TypeAlias = Literal['v0', 'v1', 'v0_include_width', 'v2']
+GridMode: TypeAlias = Literal['v0', 'v1', 'v0_include_width', 'v2', 'v4']
 # pytype doesn't support float literals, but pydantic json schema does.
 StickWidth: TypeAlias = Literal[0.25, 0.5, 1, 2, 3, 4]  # pyrefly: ignore[invalid-literal]
 StickWidthValues = typing.get_args(StickWidth)

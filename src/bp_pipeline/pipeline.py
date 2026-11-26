@@ -39,8 +39,10 @@ from .crease_pattern import crease_pattern
 from .crease_pattern import visualize
 from .crease_pattern.parser import svg as svg_parser
 from .packing import config as packing_config_lib
+from .packing import grid_size as grid_size_lib
 from .packing import packing_output as packing_output_lib
 from .packing import shaping_flap_templates
+from .packing import utils_packing_flaps
 from .packing import utils_solver
 from .shaping import bus_adapter
 from .shaping import geometric_fold_3d_heuristics
@@ -205,6 +207,7 @@ class PackingTaskConfig(TaskConfig):
   packing_config: packing_config_lib.PackingConfig = dataclasses.field(
       default_factory=packing_config_lib.PackingConfig
   )
+  grid_mode: stick_figure.GridMode = 'v4'  # Backtracking start grid mode.
   max_retries: int = 30
   packer: str = 'default'
   packer_config: Any | None = None
@@ -244,6 +247,7 @@ class PackingTaskConfig(TaskConfig):
   def reference(cls, **overrides: Any) -> Self:
     """Returns a PackingTaskConfig matching baseline reference behavior."""
     defaults: dict[str, Any] = {
+        'grid_mode': 'v2',
         'packing_config': packing_config_lib.PackingConfig(
             river_backtracking=False,
             legacy_iteration_order=True,
@@ -1131,6 +1135,37 @@ def _run_packing_sweep_pass(
   return max_grid_size_reached
 
 
+def get_base_grid_size(
+    stick_figure_obj: stick_figure.StickFigure,
+    config: PackingTaskConfig,
+    *,
+    is_symmetric: bool | None = None,
+) -> int:
+  """Returns the even-aligned starting grid size for a packing sweep."""
+  effective_is_sym = (
+      stick_figure_obj.is_symmetric_tree
+      if is_symmetric is None
+      else is_symmetric
+  )
+  v4_is_sym = effective_is_sym and not config.allow_paired_axis_placement
+  if config.grid_mode == 'v4':
+    base_grid_size = grid_size_lib.calculate_v4_grid_size(
+        stick_figure_obj,
+        use_level_shifter=config.packing_config.use_level_shifter,
+        is_symmetric=v4_is_sym,
+        flap_dim_fn=utils_packing_flaps.get_flap_dim,
+    )
+  else:
+    base_grid_size = stick_figure_obj.get_packing_gridsize(
+        use_level_shifter=config.packing_config.use_level_shifter,
+        mode=config.grid_mode,
+        is_symmetric=v4_is_sym,
+    )
+  if effective_is_sym and base_grid_size % 2 == 1:
+    base_grid_size += 1
+  return base_grid_size
+
+
 def pack_crease_pattern(
     stick_figure_input: (
         StickFigureInput | stick_figure.StickFigure | bus.DesignTree
@@ -1155,7 +1190,9 @@ def pack_crease_pattern(
 
   is_symmetric = stick_figure_input.is_symmetric_tree
   stick_figure_obj = stick_figure_input.merged_stick_figure.stick_figure
-  base_grid_size = stick_figure_obj.get_packing_gridsize()
+  base_grid_size = get_base_grid_size(
+      stick_figure_obj, config, is_symmetric=is_symmetric
+  )
   from . import plugins  # pylint: disable=g-import-not-at-top
 
   if (
@@ -1170,8 +1207,6 @@ def pack_crease_pattern(
             stick_figure_obj, is_symmetric
         ),
     )
-  if is_symmetric and base_grid_size % 2 == 1:
-    base_grid_size += 1
   max_grid_size = stick_figure_input.max_grid_size
   packing_outputs: list[packing_output_lib.PackingOutput] = []
   errors_per_retry: list[str] = []
