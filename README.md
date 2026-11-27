@@ -104,7 +104,7 @@ patterns (`CreasePattern`) and shaded 3D shaped models:
         crease pattern synthesis (`hinges.SolverConfig`) with streaming solution
         discovery (`bp.solve()`).
 5.  **Global Flat-Foldability Simulator
-    (`bp_pipeline.third_party.flat_folder`)**:
+    (`bp_pipeline.simulator.flat_folder`)**:
     -   Pure-Python global flat-foldability verification ported from Jason S.
         Ku's MIT-licensed
         [Flat-Folder](https://github.com/origamimagiro/flat-folder) software.
@@ -336,12 +336,12 @@ you may not use this file except in compliance with the Apache 2.0 license.
 You may obtain a copy of the Apache 2.0 license at:
 https://www.apache.org/licenses/LICENSE-2.0
 
-`src/bp_pipeline/third_party/flat_folder/` contains a Python port of the
+`src/bp_pipeline/simulator/flat_folder/` contains a Python port of the
 MIT-licensed [Flat-Folder](https://github.com/origamimagiro/flat-folder)
 software by Jason S. Ku (see
-[`src/bp_pipeline/third_party/flat_folder/LICENSE`](src/bp_pipeline/third_party/flat_folder/LICENSE)
+[`src/bp_pipeline/simulator/flat_folder/LICENSE`](src/bp_pipeline/simulator/flat_folder/LICENSE)
 and
-[`src/bp_pipeline/third_party/flat_folder/README.md`](src/bp_pipeline/third_party/flat_folder/README.md)).
+[`src/bp_pipeline/simulator/flat_folder/README.md`](src/bp_pipeline/simulator/flat_folder/README.md)).
 
 All other materials are licensed under the Creative Commons Attribution 4.0
 International License (CC-BY). You may obtain a copy of the CC-BY license at:
