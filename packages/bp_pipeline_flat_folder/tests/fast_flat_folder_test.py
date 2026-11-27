@@ -859,11 +859,15 @@ class FastFlatFolderTest(parameterized.TestCase):
         'verify_reference_sat_certificate',
         'CertificateCheckResult',
         'FlatFolderFOLD',
+        'MeshLayerOrderResult',
     ):
       self.assertFalse(
           hasattr(bp_pipeline_flat_folder, trimmed_name),
           msg=f'Trimmed symbol unexpectedly exported at root: {trimmed_name}',
       )
+    self.assertTrue(hasattr(fast_flat_folder, 'MeshLayerOrderResult'))
+    self.assertTrue(hasattr(session, 'solve_segments'))
+    self.assertTrue(hasattr(session, 'solve_graph'))
     # Submodule exports on `sat_certificate_checker` remain intact.
     self.assertTrue(hasattr(sat_certificate_checker, 'CertificateCheckResult'))
     self.assertTrue(
@@ -3606,6 +3610,149 @@ class FastFlatFolderTest(parameterized.TestCase):
     self.assertEqual(session.engine_claim_rejections, 0)
     self.assertEqual(fast_flat_folder.engine_claim_rejections(), before_claims)
     self.assertGreaterEqual(cert_rejected_pattern, 1)
+
+  def test_solve_segments_and_solve_graph(self):
+    session = fast_flat_folder.FlatFolderSession(use_memo_cache=False)
+    segs = [
+        (0.0, 0.0, 4.0, 0.0, 'B'),
+        (4.0, 0.0, 4.0, 4.0, 'B'),
+        (4.0, 4.0, 0.0, 4.0, 'B'),
+        (0.0, 4.0, 0.0, 0.0, 'B'),
+        (1.0, 0.0, 1.0, 4.0, 'V'),
+        (2.0, 0.0, 2.0, 4.0, 'M'),
+        (3.0, 0.0, 3.0, 4.0, 'V'),
+    ]
+    seg_res = session.solve_segments(segs)
+    self.assertTrue(seg_res.flat_foldable)
+    self.assertEqual(seg_res.verdict, fast_flat_folder.FoldVerdict.FOLDABLE)
+    self.assertLen(seg_res.face_orders, 4)
+    self.assertLen(set(seg_res.face_orders), 4)
+    self.assertNotEmpty(seg_res.ordered_face_pairs)
+    self.assertNotEmpty(seg_res.cell_faces_ordered)
+
+    no_flip_res = session.solve_segments(segs, flip_to_top_face_up=False)
+    self.assertTrue(no_flip_res.flat_foldable)
+    self.assertLen(no_flip_res.face_orders, 4)
+
+    # Unassigned interior crease: `face_group_ranks` picks which face sits on
+    # top (`smaller rank` -> preferred toward top of stack).
+    unassigned_segs = [
+        (0.0, 0.0, 2.0, 0.0, 'B'),
+        (2.0, 0.0, 2.0, 2.0, 'B'),
+        (2.0, 2.0, 0.0, 2.0, 'B'),
+        (0.0, 2.0, 0.0, 0.0, 'B'),
+        (1.0, 0.0, 1.0, 2.0, 'U'),
+    ]
+    rank_0_top = session.solve_segments(
+        unassigned_segs, face_group_ranks=[0, 10]
+    )
+    rank_1_top = session.solve_segments(
+        unassigned_segs, face_group_ranks=[10, 0]
+    )
+    self.assertTrue(rank_0_top.flat_foldable)
+    self.assertTrue(rank_1_top.flat_foldable)
+    self.assertNotEqual(rank_0_top.face_orders, rank_1_top.face_orders)
+    self.assertGreater(rank_0_top.face_orders[0], rank_0_top.face_orders[1])
+    self.assertGreater(rank_1_top.face_orders[1], rank_1_top.face_orders[0])
+
+    # Wrong-length `face_group_ranks` -> C++ `parse_error` / `NOT_FOLDABLE`.
+    bad_ranks_res = session.solve_segments(segs, face_group_ranks=[0])
+    self.assertFalse(bad_ranks_res.flat_foldable)
+    self.assertEqual(bad_ranks_res.exit_stage, 'parse_error')
+
+    # UNSAT locked C-roll (`V` at x=3 and `V` at x=4 on [0, 8]^2).
+    unsat_res = session.solve_segments([
+        (0.0, 0.0, 8.0, 0.0, 'B'),
+        (8.0, 0.0, 8.0, 8.0, 'B'),
+        (8.0, 8.0, 0.0, 8.0, 'B'),
+        (0.0, 8.0, 0.0, 0.0, 'B'),
+        (3.0, 0.0, 3.0, 8.0, 'V'),
+        (4.0, 0.0, 4.0, 8.0, 'V'),
+    ])
+    self.assertFalse(unsat_res.flat_foldable)
+    self.assertEqual(
+        unsat_res.verdict, fast_flat_folder.FoldVerdict.NOT_FOLDABLE
+    )
+
+    graph_verts = [
+        (0.0, 0.0),
+        (2.0, 0.0),
+        (4.0, 0.0),
+        (4.0, 4.0),
+        (2.0, 4.0),
+        (0.0, 4.0),
+    ]
+    graph_edges = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 4),
+        (4, 5),
+        (5, 0),
+        (1, 4),
+    ]
+    graph_asgns = ['B', 'B', 'B', 'B', 'B', 'B', 'V']
+    cw_faces = [[0, 5, 4, 1], [1, 4, 3, 2]]
+    graph_res = session.solve_graph(
+        graph_verts,
+        graph_edges,
+        graph_asgns,
+        face_vertices=cw_faces,
+    )
+    self.assertTrue(graph_res.flat_foldable)
+    self.assertLen(graph_res.face_orders, 2)
+    self.assertNotEqual(graph_res.face_orders[0], graph_res.face_orders[1])
+    self.assertEqual(
+        [list(f) for f in graph_res.face_vertices],
+        [list(reversed(f)) for f in cw_faces],
+    )
+
+    no_flip_graph_res = session.solve_graph(
+        graph_verts,
+        graph_edges,
+        graph_asgns,
+        face_vertices=cw_faces,
+        flip_to_top_face_up=False,
+    )
+    self.assertTrue(no_flip_graph_res.flat_foldable)
+    self.assertEqual(
+        [list(f) for f in no_flip_graph_res.face_vertices], cw_faces
+    )
+
+    # `face_vertices=None` extracts planar faces automatically in graph mode.
+    auto_face_res = session.solve_graph(
+        graph_verts,
+        graph_edges,
+        graph_asgns,
+        face_vertices=None,
+        flip_to_top_face_up=False,
+    )
+    self.assertTrue(auto_face_res.flat_foldable)
+    self.assertLen(auto_face_res.face_orders, 2)
+
+    # Input validation: empty inputs, `python_ref` backend, and bad codes.
+    with self.assertRaisesRegex(ValueError, 'non-empty'):
+      session.solve_segments([])
+    with self.assertRaisesRegex(ValueError, 'non-empty'):
+      session.solve_graph([], [], [])
+    with self.assertRaisesRegex(ValueError, 'same length'):
+      session.solve_graph(graph_verts, graph_edges, ['B'])
+
+    py_session = fast_flat_folder.FlatFolderSession(backend='python_ref')
+    with self.assertRaisesRegex(ValueError, "backend='cpp'"):
+      py_session.solve_segments(segs)
+    with self.assertRaisesRegex(ValueError, "backend='cpp'"):
+      py_session.solve_graph(graph_verts, graph_edges, graph_asgns)
+
+    for bad_code in ('X', 'm', -1, 6, True):
+      with self.assertRaisesRegex(ValueError, 'Unsupported crease assignment'):
+        session.solve_segments([(0.0, 0.0, 1.0, 0.0, bad_code)])  # type: ignore[arg-type]
+      with self.assertRaisesRegex(ValueError, 'Unsupported crease assignment'):
+        session.solve_graph(
+            graph_verts,
+            graph_edges,
+            ['B', 'B', 'B', 'B', 'B', 'B', bad_code],  # type: ignore[list-item]
+        )
 
 
 if __name__ == '__main__':

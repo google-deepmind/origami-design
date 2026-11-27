@@ -33,9 +33,11 @@ Provides:
    runtime shadow auditing (`shadow_audit_every_n`).
 3. `solve_flat_folded_state`: flat-folded state solver in right-handed grid
    coordinates with exact coherent `face_group_fn` precedent tie-breaking.
-4. `FlatFolderSession.extract_unfolded_faces_cp` and
-   `compute_folded_vertices_cp`: public unfolded-face and folded-vertex
-   geometry helpers without exposing the private C++ extension module.
+4. `FlatFolderSession.extract_unfolded_faces_cp`,
+   `FlatFolderSession.solve_segments`, `FlatFolderSession.solve_graph`,
+   `MeshLayerOrderResult`, and `compute_folded_vertices_cp`: public
+   unfolded-face, folded-vertex, and engine-level layer-ordering helpers without
+   exposing the private C++ extension module.
 """
 
 import collections
@@ -202,6 +204,7 @@ class FastFoldResult:
 
   @property
   def verdict(self) -> FoldVerdict:
+    """Three-valued `FoldVerdict` derived from `flat_foldable`."""
     if self.flat_foldable is None:
       return FoldVerdict.COULD_NOT_DECIDE
     return (
@@ -219,6 +222,57 @@ class FlatFoldSolution:
   face_orders: tuple[int, ...]
   cell_polygons_folded_rh: tuple[tuple[Point2DFloat, ...], ...]
   cell_faces_ordered: tuple[tuple[int, ...], ...]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class MeshLayerOrderResult:
+  """Solved flat-foldable layer ordering and mesh geometry for segments/graphs.
+
+  Attributes:
+    flat_foldable: Three-valued verdict (`True`, `False`, or `None` when
+      inconclusive).
+    states: Product of valid solution counts across unassigned components.
+    exit_stage: Terminal solver pipeline stage string.
+    conflict_reason: Diagnostic reason when not flat-foldable, or `None`.
+    local_violations: Per-vertex Maekawa/Kawasaki violation messages.
+    wall_seconds: Elapsed C++ solver wall time in seconds.
+    vertex_coords: Unfolded 2D vertex coordinates `(x, y)`.
+    folded_vertices: Rigidly flat-folded 2D vertex coordinates `(x, y)`.
+    edge_vertices: Mesh edge endpoint index pairs `(u, v)`.
+    edge_faces: Incident face index tuples per mesh edge.
+    face_vertices: Per-face vertex index tuples (counter-clockwise in segments
+      mode with `flip_to_top_face_up=True`; in graph mode normalized from input
+      CW/CCW winding and `flip_to_top_face_up`).
+    face_orientations: Per-face orientation flip flags (`False` on face `0`).
+    ordered_face_pairs: Directed `(top_face, bottom_face)` overlap constraints.
+    face_orders: Global bottom-to-top integer layer ranks (`0 .. max_rank`).
+    cell_faces_ordered: Per-cell bottom-to-top ordered face index stacks.
+  """
+
+  flat_foldable: bool | None
+  states: int
+  exit_stage: str
+  conflict_reason: str | None = None
+  local_violations: tuple[str, ...] = ()
+  wall_seconds: float = 0.0
+  vertex_coords: tuple[Point2DFloat, ...] = ()
+  folded_vertices: tuple[Point2DFloat, ...] = ()
+  edge_vertices: tuple[tuple[int, int], ...] = ()
+  edge_faces: tuple[tuple[int, ...], ...] = ()
+  face_vertices: tuple[tuple[int, ...], ...] = ()
+  face_orientations: tuple[bool, ...] = ()
+  ordered_face_pairs: tuple[tuple[int, int], ...] = ()
+  face_orders: tuple[int, ...] = ()
+  cell_faces_ordered: tuple[tuple[int, ...], ...] = ()
+
+  @property
+  def verdict(self) -> FoldVerdict:
+    """Three-valued `FoldVerdict` derived from `flat_foldable`."""
+    if self.flat_foldable is None:
+      return FoldVerdict.COULD_NOT_DECIDE
+    return (
+        FoldVerdict.FOLDABLE if self.flat_foldable else FoldVerdict.NOT_FOLDABLE
+    )
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -415,6 +469,62 @@ def _build_flat_folder_output_from_cpp(
   )
 
 
+def _parse_assignment_code(raw: int | str) -> int:
+  """Validates and converts an assignment code (`'B'`..`'U'` or `0..5`)."""
+  if isinstance(raw, str):
+    code = _ASSIGNMENT_STR_TO_INT.get(raw)
+    if code is None:
+      raise ValueError(
+          f"Unsupported crease assignment {raw!r}; expected one of 'B', 'M',"
+          " 'V', 'F', 'U' or an integer in 0..5."
+      )
+    return code
+  if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= 5:
+    raise ValueError(
+        f"Unsupported crease assignment {raw!r}; expected an integer in 0..5 or"
+        " one of 'B', 'M', 'V', 'F', 'U'."
+    )
+  return raw
+
+
+def _build_mesh_layer_order_result(
+    cpp_res: _fast_flat_folder.SolveResult,
+) -> MeshLayerOrderResult:
+  """Converts a C++ `SolveResult` into a Python `MeshLayerOrderResult`."""
+  ff_val: bool | None = (
+      None if cpp_res.flat_foldable is None else bool(cpp_res.flat_foldable)
+  )
+  return MeshLayerOrderResult(
+      flat_foldable=ff_val,
+      states=int(cpp_res.states),
+      exit_stage=str(cpp_res.exit_stage),
+      conflict_reason=cpp_res.conflict_reason or None,
+      local_violations=tuple(cpp_res.local_violations),
+      wall_seconds=float(cpp_res.wall_seconds),
+      vertex_coords=tuple(
+          (float(vx), float(vy)) for vx, vy in cpp_res.vertex_coords
+      ),
+      folded_vertices=tuple(
+          (float(fx), float(fy)) for fx, fy in cpp_res.folded_vertices
+      ),
+      edge_vertices=tuple((int(u), int(v)) for u, v in cpp_res.edge_vertices),
+      edge_faces=tuple(
+          tuple(int(fi) for fi in ef) for ef in cpp_res.edge_faces
+      ),
+      face_vertices=tuple(
+          tuple(int(vi) for vi in face) for face in cpp_res.face_vertices
+      ),
+      face_orientations=tuple(bool(o) for o in cpp_res.face_orientations),
+      ordered_face_pairs=tuple(
+          (int(top), int(bot)) for top, bot in cpp_res.ordered_face_pairs
+      ),
+      face_orders=tuple(int(o) for o in cpp_res.face_orders),
+      cell_faces_ordered=tuple(
+          tuple(int(fi) for fi in stack) for stack in cpp_res.cell_faces_ordered
+      ),
+  )
+
+
 def get_absolute_face_orders_from_edges(
     edges: Sequence[Sequence[int]], num_faces: int
 ) -> list[int]:
@@ -535,6 +645,144 @@ class FlatFolderSession:
     if not cpp_res.flat_foldable or not cpp_res.vertex_coords:
       return None
     return tuple(cpp_res.vertex_coords), tuple(cpp_res.folded_vertices)
+
+  def solve_segments(
+      self,
+      segments: Sequence[tuple[float, float, float, float, int | str]],
+      *,
+      flip_to_top_face_up: bool = True,
+      kawasaki_epsilon: float = 5e-2,
+      solution_limit: int = 1,
+      face_group_ranks: Sequence[int] | None = None,
+  ) -> MeshLayerOrderResult:
+    """Engine-only segment layer-order solve without exact SAT check; see `check_cp`.
+
+    Runs the C++20 flat-folder directly on `(x1, y1, x2, y2, assignment)`
+    segments using the session's configured cache settings without running the
+    exact-rational SAT certificate verifier.
+
+    Args:
+      segments: Non-empty sequence of `(x1, y1, x2, y2, assignment)` tuples
+        where `assignment` is an integer code in `0..5` or `'B'`/`'M'`/`'V'`/
+        `'F'`/`'U'`.
+      flip_to_top_face_up: Whether to apply top-face-up orientation convention.
+      kawasaki_epsilon: Tolerance in radians for Kawasaki's local angle check.
+      solution_limit: Maximum states enumerated per unassigned component.
+      face_group_ranks: Optional per-face integer group ranks for tie-breaking
+        (smaller rank prefers placement toward the top of the stack).
+
+    Returns:
+      A `MeshLayerOrderResult` with layer ordering, orientations, and geometry.
+
+    Raises:
+      ValueError: If `self.backend != 'cpp'`, `segments` is empty, or any
+        assignment code is invalid.
+    """
+    if self._backend != "cpp":
+      raise ValueError("solve_segments requires backend='cpp'.")
+    if not segments:
+      raise ValueError("segments must be non-empty.")
+
+    cpp_segs = [
+        _fast_flat_folder.InputSegment(
+            float(x1),
+            float(y1),
+            float(x2),
+            float(y2),
+            _parse_assignment_code(code),
+        )
+        for x1, y1, x2, y2, code in segments
+    ]
+    opts = _fast_flat_folder.SolveOptions()
+    opts.flip_to_top_face_up = flip_to_top_face_up
+    opts.taco_only = False
+    opts.compute_layer_order = True
+    opts.solution_limit = solution_limit
+    opts.kawasaki_epsilon = kawasaki_epsilon
+    opts.use_memo_cache = self._use_memo_cache
+    opts.use_support_cache = self._use_support_cache
+    opts.use_component_cache = self._use_component_cache
+    if face_group_ranks is not None:
+      opts.face_group_ranks = [int(r) for r in face_group_ranks]
+
+    return _build_mesh_layer_order_result(
+        self._engine.analyze_lines(cpp_segs, opts)
+    )
+
+  def solve_graph(
+      self,
+      vertex_coords: Sequence[Point2DFloat],
+      edge_vertices: Sequence[tuple[int, int]],
+      edge_assignments: Sequence[int | str],
+      *,
+      face_vertices: Sequence[Sequence[int]] | None = None,
+      flip_to_top_face_up: bool = True,
+      kawasaki_epsilon: float = 5e-2,
+      solution_limit: int = 1,
+      face_group_ranks: Sequence[int] | None = None,
+  ) -> MeshLayerOrderResult:
+    """Engine-only mesh-graph layer-order solve without exact SAT check; see `check_cp`.
+
+    Runs the C++20 flat-folder directly on pre-parsed planar mesh topology using
+    the session's configured cache settings without running the exact-rational
+    SAT certificate verifier.
+
+    Args:
+      vertex_coords: Non-empty unfolded 2D vertex coordinates `(x, y)`.
+      edge_vertices: Non-empty edge endpoint index pairs `(u, v)`.
+      edge_assignments: Per-edge assignment codes (`0..5` or `'B'`..`'U'`),
+        matching `len(edge_vertices)`.
+      face_vertices: Optional per-face vertex index sequences (winding
+        normalized according to `flip_to_top_face_up` in
+        `MeshLayerOrderResult.face_vertices`).
+      flip_to_top_face_up: Whether to apply top-face-up orientation convention.
+      kawasaki_epsilon: Tolerance in radians for Kawasaki's local angle check.
+      solution_limit: Maximum states enumerated per unassigned component.
+      face_group_ranks: Optional per-face integer group ranks for tie-breaking
+        (smaller rank prefers placement toward the top of the stack).
+
+    Returns:
+      A `MeshLayerOrderResult` with layer ordering, orientations, and geometry.
+
+    Raises:
+      ValueError: If `self.backend != 'cpp'`, `vertex_coords` or `edge_vertices`
+        is empty, `len(edge_assignments) != len(edge_vertices)`, or any
+        assignment code is invalid.
+    """
+    if self._backend != "cpp":
+      raise ValueError("solve_graph requires backend='cpp'.")
+    if not vertex_coords or not edge_vertices:
+      raise ValueError("vertex_coords and edge_vertices must be non-empty.")
+    if len(edge_assignments) != len(edge_vertices):
+      raise ValueError(
+          "edge_assignments must have the same length as edge_vertices."
+      )
+
+    v_pairs = [(float(vx), float(vy)) for vx, vy in vertex_coords]
+    e_pairs = [(int(u), int(v)) for u, v in edge_vertices]
+    e_codes = [_parse_assignment_code(a) for a in edge_assignments]
+    opt_faces = (
+        [[int(vi) for vi in face] for face in face_vertices]
+        if face_vertices is not None
+        else []
+    )
+    opts = _fast_flat_folder.SolveOptions()
+    opts.flip_to_top_face_up = flip_to_top_face_up
+    opts.taco_only = False
+    opts.compute_layer_order = True
+    opts.solution_limit = solution_limit
+    opts.kawasaki_epsilon = kawasaki_epsilon
+    opts.use_memo_cache = self._use_memo_cache
+    opts.use_support_cache = self._use_support_cache
+    opts.use_component_cache = self._use_component_cache
+    if face_group_ranks is not None:
+      opts.face_group_ranks = [int(r) for r in face_group_ranks]
+
+    return _build_mesh_layer_order_result(
+        self._engine.analyze_fold_graph(
+            v_pairs, e_pairs, e_codes, opt_faces, opts
+        )
+    )
 
   @property
   def engine_claim_rejections(self) -> int:

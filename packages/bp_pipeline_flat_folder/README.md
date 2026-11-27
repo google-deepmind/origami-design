@@ -20,8 +20,9 @@ components with **no OR-Tools dependency** (depends only on `bp-pipeline`):
     *   Drop-in `.cp`/`.fold`/`.svg`/`.opx` entry point (`analyze_fold_file`,
         returning `FlatFolderOutput`), stateless `.cp` checker (`check_cp`,
         returning three-valued `FastFoldResult` / `FoldVerdict`), and
-        unfolded/folded geometry helpers
+        unfolded/folded geometry and engine layer-ordering helpers
         (`FlatFolderSession.extract_unfolded_faces_cp`,
+        `FlatFolderSession.solve_segments`, `FlatFolderSession.solve_graph`,
         `compute_folded_vertices_cp`, `solve_flat_folded_state`).
 2.  **Exact-rational SAT certificate verifier
     (`bp_pipeline_flat_folder.sat_certificate_checker`)**:
@@ -70,13 +71,16 @@ change.
     `compute_folded_vertices_cp`, `solve_flat_folded_state`.
 *   **Submodules (2):** `fast_flat_folder`, `sat_certificate_checker`.
 
-Advanced and diagnostic helpers (`ShadowAuditStats`, `engine_claim_rejections`,
-`diff_cp_changed_segments`, `get_absolute_face_orders_from_edges`,
-`FlatFolderFOLD`, `GUI_COLORS`, `visualize_folded_state`) remain available on
-`bp_pipeline_flat_folder.fast_flat_folder`, and exact-certificate APIs
-(`CertificateCheckResult`, `CertificateRejectionKind`, `REJECTION_REASON_TABLE`,
-`classify_rejection_reason`, `verify_cpp_sat_certificate`,
-`verify_reference_sat_certificate`) remain on
+Advanced and diagnostic helpers (`MeshLayerOrderResult`, `ShadowAuditStats`,
+`engine_claim_rejections`, `diff_cp_changed_segments`,
+`get_absolute_face_orders_from_edges`, `FlatFolderFOLD`, `GUI_COLORS`,
+`visualize_folded_state`) remain available on
+`bp_pipeline_flat_folder.fast_flat_folder` (`FlatFolderSession.solve_segments`
+and `FlatFolderSession.solve_graph` run the C++ engine directly without exact
+SAT certificate verification; use `check_cp` for verified `.cp` checks), and
+exact-certificate APIs (`CertificateCheckResult`, `CertificateRejectionKind`,
+`REJECTION_REASON_TABLE`, `classify_rejection_reason`,
+`verify_cpp_sat_certificate`, `verify_reference_sat_certificate`) remain on
 `bp_pipeline_flat_folder.sat_certificate_checker`.
 
 ## Requirements
