@@ -216,18 +216,35 @@
     "slug": "bounding-red-kangaroo",
     "title": "Bounding Red Kangaroo",
     "subtitle": "Osphranter rufus",
-    "summary": "Mid-leap macropod sculpted on a compact 26×26 grid with width-2 muscular haunches, splayed hopping hindlegs, tucked forepaws, pricked ears, and counterbalance tail.",
+    "summary": "Bounding red kangaroo sculpted on a 30×30 level-shifted grid featuring an inline 1–2–1 pouch river level shifter and bilateral 2×2 thigh corner-pocket level shifters, a 3D wedge-tapered muzzle, tall V-splayed cupped ears, tucked forepaws, Z-articulated hopping hindlegs, and a swept counterbalance tail.",
     "techniques": [
-      "Width-2 Muscular Haunches",
-      "Hopping Hindlegs & Long Pes",
-      "Cupped Upright Ears",
-      "Counterbalance Tail"
+      "Inline River & Corner-Pocket Level Shifters",
+      "3D Wedge Muzzle & Cupped V-Ears",
+      "3D Reverse-Fold Hopping Pes",
+      "Tucked Forepaws & Swept Tail"
     ],
-    "pipeline_args": [],
     "colorTop": "#B04E2A",
     "colorBottom": "#F2E2C6",
     "camera": {
-      "azimuth": 54,
+      "azimuth": 52,
+      "elevation": 18
+    }
+  },
+  {
+    "slug": "southern-white-rhino",
+    "title": "Southern White Rhinoceros",
+    "subtitle": "Ceratotherium simum",
+    "summary": "Grazing southern white rhinoceros packed on a 36×36 level-shifted grid with mirror-symmetric sacrificial corner-pocket level shifters, a short-necked plunging cranium, square grazing snout, twin upturned horns, flared ears, and four equal-height vertical pillar legs.",
+    "techniques": [
+      "Sacrificial Corner-Pocket Level Shifters",
+      "Short-Necked Plunging Cranium & Twin Horns",
+      "Equal-Height Vertical Pillar Legs",
+      "100% Bilateral Mirror Symmetry"
+    ],
+    "colorTop": "#6C6862",
+    "colorBottom": "#E8E1D4",
+    "camera": {
+      "azimuth": 46,
       "elevation": 18
     }
   }

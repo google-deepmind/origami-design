@@ -1,0 +1,245 @@
+{
+  "name": "Southern White Rhinoceros",
+  "category": "mammals",
+  "color_top": [
+    108,
+    104,
+    98
+  ],
+  "color_bottom": [
+    228,
+    222,
+    210
+  ],
+  "complexity": 3,
+  "root": "armor_barrel",
+  "children": [
+    {
+      "name": "pelvic_shield",
+      "start": "j_hip",
+      "end": "j_b2",
+      "azimuth_angle": 0,
+      "elevation_angle": 4,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "armor_barrel",
+      "start": "j_b2",
+      "end": "j_b1",
+      "azimuth_angle": 0,
+      "elevation_angle": 2,
+      "length": 2,
+      "width": 3,
+      "shaping_flap": false
+    },
+    {
+      "name": "withers_collar",
+      "start": "j_b1",
+      "end": "j_withers",
+      "azimuth_angle": 0,
+      "elevation_angle": -4,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "rhino_cranium",
+      "start": "j_withers",
+      "end": "j_skull",
+      "azimuth_angle": 0,
+      "elevation_angle": -36,
+      "length": 1,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "ear_l",
+      "start": "j_skull",
+      "end": "j_ear_l",
+      "azimuth_angle": 44,
+      "elevation_angle": 52,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "ear_r",
+      "start": "j_skull",
+      "end": "j_ear_r",
+      "azimuth_angle": -44,
+      "elevation_angle": 52,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "posterior_horn",
+      "start": "j_skull",
+      "end": "j_phorn_end",
+      "azimuth_angle": 0,
+      "elevation_angle": 60,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "square_snout",
+      "start": "j_skull",
+      "end": "j_rostrum",
+      "azimuth_angle": 0,
+      "elevation_angle": -22,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "anterior_horn",
+      "start": "j_rostrum",
+      "end": "j_ahorn_mid",
+      "azimuth_angle": 0,
+      "elevation_angle": 58,
+      "length": 2,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "horn_apex",
+      "start": "j_ahorn_mid",
+      "end": "j_ahorn_tip",
+      "azimuth_angle": 0,
+      "elevation_angle": 74,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_shoulder_l",
+      "start": "j_withers",
+      "end": "j_fknee_l",
+      "azimuth_angle": 74,
+      "elevation_angle": -54,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_column_l",
+      "start": "j_fknee_l",
+      "end": "j_ffoot_l",
+      "azimuth_angle": 68,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_shoulder_r",
+      "start": "j_withers",
+      "end": "j_fknee_r",
+      "azimuth_angle": -74,
+      "elevation_angle": -54,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "fore_column_r",
+      "start": "j_fknee_r",
+      "end": "j_ffoot_r",
+      "azimuth_angle": -68,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_haunch_l",
+      "start": "j_hip",
+      "end": "j_hknee_l",
+      "azimuth_angle": 96,
+      "elevation_angle": -52,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_column_l",
+      "start": "j_hknee_l",
+      "end": "j_hfoot_l",
+      "azimuth_angle": 92,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_haunch_r",
+      "start": "j_hip",
+      "end": "j_hknee_r",
+      "azimuth_angle": -96,
+      "elevation_angle": -52,
+      "length": 2,
+      "width": 2,
+      "shaping_flap": false
+    },
+    {
+      "name": "hind_column_r",
+      "start": "j_hknee_r",
+      "end": "j_hfoot_r",
+      "azimuth_angle": -92,
+      "elevation_angle": -82,
+      "length": 2,
+      "width": 1,
+      "shaping_flap": false
+    },
+    {
+      "name": "rhino_tail",
+      "start": "j_hip",
+      "end": "j_tail_end",
+      "azimuth_angle": 180,
+      "elevation_angle": -45,
+      "length": 1,
+      "width": 0.5,
+      "shaping_flap": false
+    }
+  ],
+  "views": [
+    [
+      22,
+      22,
+      16
+    ],
+    [
+      -22,
+      22,
+      16
+    ],
+    [
+      22,
+      -22,
+      16
+    ],
+    [
+      -22,
+      -22,
+      16
+    ],
+    [
+      0,
+      28,
+      10
+    ],
+    [
+      0,
+      -28,
+      10
+    ],
+    [
+      28,
+      0,
+      12
+    ]
+  ]
+}

@@ -12,7 +12,7 @@
     198
   ],
   "complexity": 3,
-  "root": "hip_base",
+  "root": "pouch_belly",
   "children": [
     {
       "name": "hip_base",
@@ -25,13 +25,13 @@
       "shaping_flap": false
     },
     {
-      "name": "lumbar_torso",
+      "name": "pouch_belly",
       "start": "j_b2",
       "end": "j_b1",
       "azimuth_angle": 0,
       "elevation_angle": 42,
       "length": 2,
-      "width": 1,
+      "width": 2,
       "shaping_flap": false
     },
     {
@@ -135,40 +135,20 @@
       "shaping_flap": false
     },
     {
-      "name": "haunch_muscle_l",
-      "start": "j_pelvis",
-      "end": "j_haunch_l",
-      "azimuth_angle": 84,
-      "elevation_angle": -32,
-      "length": 2,
-      "width": 2,
-      "shaping_flap": false
-    },
-    {
-      "name": "haunch_muscle_r",
-      "start": "j_pelvis",
-      "end": "j_haunch_r",
-      "azimuth_angle": -84,
-      "elevation_angle": -32,
-      "length": 2,
-      "width": 2,
-      "shaping_flap": false
-    },
-    {
       "name": "muscular_thigh_l",
       "start": "j_pelvis",
       "end": "j_stifle_l",
-      "azimuth_angle": 68,
-      "elevation_angle": -44,
+      "azimuth_angle": 78,
+      "elevation_angle": -42,
       "length": 2,
-      "width": 1,
+      "width": 2,
       "shaping_flap": false
     },
     {
       "name": "slender_tibia_l",
       "start": "j_stifle_l",
       "end": "j_ankle_l",
-      "azimuth_angle": 58,
+      "azimuth_angle": 68,
       "elevation_angle": -78,
       "length": 3,
       "width": 1,
@@ -188,17 +168,17 @@
       "name": "muscular_thigh_r",
       "start": "j_pelvis",
       "end": "j_stifle_r",
-      "azimuth_angle": -68,
-      "elevation_angle": -44,
+      "azimuth_angle": -78,
+      "elevation_angle": -42,
       "length": 2,
-      "width": 1,
+      "width": 2,
       "shaping_flap": false
     },
     {
       "name": "slender_tibia_r",
       "start": "j_stifle_r",
       "end": "j_ankle_r",
-      "azimuth_angle": -58,
+      "azimuth_angle": -68,
       "elevation_angle": -78,
       "length": 3,
       "width": 1,

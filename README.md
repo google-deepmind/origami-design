@@ -16,16 +16,17 @@ that `bp-pipeline -o` writes for a design of your own.
 
 Precomputed showcase models; each opens in the studio.
 
-> **Reproducibility note:** The original ten showcase models under
-> `docs/models/` are precomputed snapshots produced in earlier interactive
-> shaping sessions whose tool-call histories were **not recorded**, so they
-> **cannot be regenerated** from their `stick_figure.json` files alone. (One
-> model, `wyrmlord-dragon`, also had a single missing corner face — 1 vertex, 2
-> border edges, 0.41% of the sheet — patched to close a 0.001-unit border gap in
-> its source crease pattern.) Newer showcase models (`castor-and-pollux`,
-> `spinosaurus`, and `bounding-red-kangaroo`) ship `shaping_history.json` next
-> to `stick_figure.json` and record any extra CLI flags under `pipeline_args`
-> in [`docs/models/catalog.json`](docs/models/catalog.json) so
+> **Reproducibility note:** Precomputed interactive showcase models under
+> `docs/models/` (the original ten models plus the level-shifted
+> `bounding-red-kangaroo` and `southern-white-rhino`) were produced in
+> multi-stage interactive shaping sessions whose tool-call histories are not
+> replayed by `bp-pipeline actuate --reset`, so they cannot be regenerated from
+> their `stick_figure.json` files alone. (One model, `wyrmlord-dragon`, also
+> had a single missing corner face — 1 vertex, 2 border edges, 0.41% of the
+> sheet — patched to close a 0.001-unit border gap in its source crease
+> pattern.) Models shipping `shaping_history.json` next to `stick_figure.json`
+> (`castor-and-pollux` and `spinosaurus`) record any extra CLI flags under
+> `pipeline_args` in [`docs/models/catalog.json`](docs/models/catalog.json) so
 > `bp-pipeline stick_figure.json -o out/ <pipeline_args>` followed by
 > `bp-pipeline actuate out/ --reset --calls shaping_history.json` reproduces
 > `shaped_3d.fold`. Fresh designs written by `bp-pipeline FIGURE -o out/`
@@ -36,7 +37,7 @@ Precomputed showcase models; each opens in the studio.
 | [![Golden Eagle](docs/models/golden-eagle/preview.png)<br>Golden Eagle](https://google-deepmind.github.io/origami-design/?model=golden-eagle) | [![Winged Pegasus](docs/models/winged-pegasus/preview.png)<br>Winged Pegasus](https://google-deepmind.github.io/origami-design/?model=winged-pegasus) | [![Triceratops](docs/models/triceratops/preview.png)<br>Triceratops](https://google-deepmind.github.io/origami-design/?model=triceratops) | [![Western Dragon](docs/models/wyrmlord-dragon/preview.png)<br>Western Dragon](https://google-deepmind.github.io/origami-design/?model=wyrmlord-dragon) | [![King Cobra](docs/models/king-cobra/preview.png)<br>King Cobra](https://google-deepmind.github.io/origami-design/?model=king-cobra) |
 | :---: | :---: | :---: | :---: | :---: |
 | [![Emperor Scorpion](docs/models/emperor-scorpion/preview.png)<br>Emperor Scorpion](https://google-deepmind.github.io/origami-design/?model=emperor-scorpion) | [![Boxer Crab](docs/models/boxer-crab/preview.png)<br>Boxer Crab](https://google-deepmind.github.io/origami-design/?model=boxer-crab) | [![Bull Moose](docs/models/bull-moose/preview.png)<br>Bull Moose](https://google-deepmind.github.io/origami-design/?model=bull-moose) | [![Indian Peacock](docs/models/indian-peacock/preview.png)<br>Indian Peacock](https://google-deepmind.github.io/origami-design/?model=indian-peacock) | [![Crested Hoopoe](docs/models/crested-hoopoe/preview.png)<br>Crested Hoopoe](https://google-deepmind.github.io/origami-design/?model=crested-hoopoe) |
-| [![Castor and Pollux](docs/models/castor-and-pollux/preview.png)<br>Castor and Pollux](https://google-deepmind.github.io/origami-design/?model=castor-and-pollux) | [![Spinosaurus](docs/models/spinosaurus/preview.png)<br>Spinosaurus](https://google-deepmind.github.io/origami-design/?model=spinosaurus) | [![Bounding Red Kangaroo](docs/models/bounding-red-kangaroo/preview.png)<br>Bounding Red Kangaroo](https://google-deepmind.github.io/origami-design/?model=bounding-red-kangaroo) | | |
+| [![Castor and Pollux](docs/models/castor-and-pollux/preview.png)<br>Castor and Pollux](https://google-deepmind.github.io/origami-design/?model=castor-and-pollux) | [![Spinosaurus](docs/models/spinosaurus/preview.png)<br>Spinosaurus](https://google-deepmind.github.io/origami-design/?model=spinosaurus) | [![Bounding Red Kangaroo](docs/models/bounding-red-kangaroo/preview.png)<br>Bounding Red Kangaroo](https://google-deepmind.github.io/origami-design/?model=bounding-red-kangaroo) | [![Southern White Rhinoceros](docs/models/southern-white-rhino/preview.png)<br>Southern White Rhinoceros](https://google-deepmind.github.io/origami-design/?model=southern-white-rhino) | |
 
 <!-- enableFinding(LINE_OVER_80) -->
 

@@ -47,6 +47,7 @@ _MODELS_WITH_BASE_FOLD_ANGLE = frozenset({
     'golden-eagle',
     'indian-peacock',
     'king-cobra',
+    'southern-white-rhino',
     'spinosaurus',
     'triceratops',
     'winged-pegasus',
@@ -54,7 +55,6 @@ _MODELS_WITH_BASE_FOLD_ANGLE = frozenset({
 })
 
 _MODELS_WITH_UNMODIFIED_BASE_TOPOLOGY = frozenset({
-    'bounding-red-kangaroo',
     'boxer-crab',
     'bull-moose',
     'castor-and-pollux',
@@ -157,7 +157,7 @@ class ShowcaseTest(parameterized.TestCase):
         {stick.name for stick in stick_figure.children},
     )
     self.assertContainsSubset(
-        {region['kind'] for region in regions}, {'flap', 'river'}
+        {region['kind'] for region in regions}, {'flap', 'river', 'reserved'}
     )
     self.assertLen(faces_region, len(fold['faces_vertices']))
     self.assertContainsSubset(set(faces_region) - {None}, range(len(regions)))
