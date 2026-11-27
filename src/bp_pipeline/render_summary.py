@@ -15,22 +15,22 @@
 
 """Matplotlib multi-panel visualizers for stick figures and pipeline stages."""
 
+from __future__ import annotations
+
 from collections.abc import Sequence
 import pathlib
+import typing
 import xml.etree.ElementTree as ET
-
-from matplotlib import axes
-from matplotlib import patches
-import matplotlib.pyplot as plt
 
 from . import bus
 from . import render_3d
 from .crease_pattern import crease_pattern as cp_lib
-from .crease_pattern import visualize as cp_visualize
 from .shaping import geometric_simple_fold
 from .third_party.flat_folder import fold_cp
 from .stick_figures import stick_figure as sf_lib
-from .stick_figures import visualize as sf_visualize
+
+if typing.TYPE_CHECKING:
+  from matplotlib import axes  # pylint: disable=g-import-not-at-top,g-bad-import-order
 
 
 def save_stick_figure_views(
@@ -54,6 +54,9 @@ def save_stick_figure_views(
   tree = target.source if isinstance(target, bus.DesignTree) else target
   dest = pathlib.Path(out_path)
   dest.parent.mkdir(parents=True, exist_ok=True)
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
+  from .stick_figures import visualize as sf_visualize  # pylint: disable=g-import-not-at-top
+
   fig = sf_visualize.visualize_stick_from_all_views(tree, figsize=figsize)
   try:
     fig.savefig(dest, dpi=dpi, bbox_inches='tight')
@@ -92,6 +95,8 @@ def _draw_folded_svg_on_ax(
     return
 
   root = ET.fromstring(svg_str)
+  from matplotlib import patches  # pylint: disable=g-import-not-at-top
+
   for elem in root.iter():
     tag = elem.tag.split('}')[-1]
     if tag == 'polygon':
@@ -132,6 +137,9 @@ def _draw_packed_cp_on_ax(
     lw: float = 0.65,
 ) -> None:
   """Draws a `PackedCreasePattern` with colored flap and river overlays."""
+  from matplotlib import patches  # pylint: disable=g-import-not-at-top
+  from .crease_pattern import visualize as cp_visualize  # pylint: disable=g-import-not-at-top
+
   gs = float(packed.grid_size) if packed.grid_size > 0 else 1.0
   cp_visualize.draw_cp(
       packed.creases,
@@ -258,6 +266,8 @@ def _draw_kinematic_folded_cp_on_ax(
   )
 
   for f_idx, v_indices in enumerate(face_verts):
+    from matplotlib import patches  # pylint: disable=g-import-not-at-top
+
     pts: list[tuple[float, float]] = []
     for v_idx in v_indices:
       if v_idx < len(folded_verts) and folded_verts[v_idx] is not None:
@@ -373,6 +383,9 @@ def save_pipeline_summary(
 
   dest = pathlib.Path(out_path)
   dest.parent.mkdir(parents=True, exist_ok=True)
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
+  from .crease_pattern import visualize as cp_visualize  # pylint: disable=g-import-not-at-top
+
   fig, axs = plt.subplots(1, 5, figsize=(26, 5.4))
   fig.suptitle(
       f'Origami Pipeline Summary: {resolved_name} '

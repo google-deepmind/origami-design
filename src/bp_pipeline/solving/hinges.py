@@ -15,6 +15,8 @@
 
 """Utility functions for box pleating hinges."""
 
+from __future__ import annotations
+
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, MutableMapping, Sequence
 import copy
 import dataclasses

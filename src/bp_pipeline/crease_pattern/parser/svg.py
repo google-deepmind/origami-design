@@ -34,6 +34,15 @@ class SVGParseError(ValueError):
   """Raised when an SVG string fails to parse."""
 
 
+def _reject_unsafe_xml_declarations(xml: str) -> None:
+  """Rejects XML DOCTYPE and ENTITY declarations prior to parsing."""
+  lowered = xml.lower()
+  if '<!doctype' in lowered or '<!entity' in lowered:
+    raise SVGParseError(
+        'XML DOCTYPE and ENTITY declarations are not permitted in SVG files.'
+    )
+
+
 def get_fold(color: str) -> crease.Fold:
   match color.strip().lower().replace(' ', ''):
     case 'orange':
@@ -196,14 +205,22 @@ def parse_svg(
   Raises:
     SVGParseError: If the SVG string fails to parse.
   """
+  _reject_unsafe_xml_declarations(svg)
   if repair:
-    root = ET.fromstring(svg, parser=ET.XMLParser(recover=True))
+    root = ET.fromstring(
+        svg,
+        parser=ET.XMLParser(
+            recover=True, resolve_entities=False, no_network=True
+        ),
+    )
     svg = ET.tostring(root, encoding='unicode', method='xml')
 
   if not valid_svg(svg):
     raise SVGParseError('Invalid SVG string.')
 
-  root = ET.fromstring(svg)
+  root = ET.fromstring(
+      svg, parser=ET.XMLParser(resolve_entities=False, no_network=True)
+  )
   viewbox: types.ViewBox = new_viewbox or tuple(  # type: ignore[assignment]
       map(float, root.attrib['viewBox'].split(' '))
   )
@@ -597,7 +614,10 @@ def to_svg(
 def valid_xml(xml: str) -> bool:
   """Checks if the XML string is valid."""
   try:
-    ET.fromstring(xml)
+    _reject_unsafe_xml_declarations(xml)
+    ET.fromstring(
+        xml, parser=ET.XMLParser(resolve_entities=False, no_network=True)
+    )
     return True
   except (ET.ParseError, ValueError):
     return False
@@ -606,7 +626,10 @@ def valid_xml(xml: str) -> bool:
 def valid_svg(xml: str) -> bool:
   """Checks if the string is a valid SVG element containing at least one line."""
   try:
-    root = ET.fromstring(xml)
+    _reject_unsafe_xml_declarations(xml)
+    root = ET.fromstring(
+        xml, parser=ET.XMLParser(resolve_entities=False, no_network=True)
+    )
     _propagate_group_attributes(root)
     has_one_crease = False
     for line in find_elements(root, 'line'):

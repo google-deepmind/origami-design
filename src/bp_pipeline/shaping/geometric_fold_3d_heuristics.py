@@ -23,7 +23,6 @@ import math
 import typing
 from typing import NotRequired, TypedDict, cast
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from ..crease_pattern import crease as crease_utils
@@ -625,6 +624,8 @@ def _get_shaping_creases(
     return []
 
   if visualize:
+    import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
+
     fig = geometric_fold_3d_heuristics_utils.visualize_cut_line_on_folded_cp(
         base_cp,
         cut_line_start,

@@ -22,7 +22,6 @@ from bp_pipeline.crease_pattern import point as point_utils
 from bp_pipeline.shaping import geometric_simple_fold
 from bp_pipeline.third_party.flat_folder import folded_state
 from bp_pipeline.third_party.flat_folder import math_utils
-from matplotlib import path as mpath
 import numpy as np
 
 
@@ -38,6 +37,36 @@ def _sort_points_ccw(points: Sequence[tuple[float, float]]) -> np.ndarray:
   return np.array(sorted_points)
 
 
+def _point_in_polygon_2d(
+    px: float,
+    py: float,
+    poly: np.ndarray,
+    tol: float,
+) -> bool:
+  """Checks whether `(px, py)` lies inside or within `tol` of `poly`."""
+  n = len(poly)
+  if n < 3:
+    return False
+  inside = False
+  tol_sq = max(tol, 0.0) ** 2
+  x1, y1 = float(poly[-1, 0]), float(poly[-1, 1])
+  for i in range(n):
+    x2, y2 = float(poly[i, 0]), float(poly[i, 1])
+    dx, dy = x2 - x1, y2 - y1
+    seg_len_sq = dx * dx + dy * dy
+    if seg_len_sq > 0.0:
+      t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / seg_len_sq))
+      dist_sq = (px - (x1 + t * dx)) ** 2 + (py - (y1 + t * dy)) ** 2
+      if dist_sq <= tol_sq:
+        return True
+    if (y1 > py) != (y2 > py):
+      x_intersect = x1 + (py - y1) * dx / (y2 - y1)
+      if px < x_intersect:
+        inside = not inside
+    x1, y1 = x2, y2
+  return inside
+
+
 def _check_point_in_face(
     point: np.ndarray,
     face_poly_2d: np.ndarray,
@@ -45,9 +74,7 @@ def _check_point_in_face(
 ) -> bool:
   """Checks if the point is in the face."""
   ccw_corners = _sort_points_ccw(face_poly_2d)
-  path = mpath.Path(ccw_corners)
-  in_face = path.contains_point(point, radius=tol)
-  if in_face:
+  if _point_in_polygon_2d(float(point[0]), float(point[1]), ccw_corners, tol):
     return True
   border_edges = []
   for i in range(len(ccw_corners)):

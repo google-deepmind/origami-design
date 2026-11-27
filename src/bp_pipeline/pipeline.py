@@ -15,6 +15,8 @@
 
 """End-to-end packing and solving pipeline for Box Pleating."""
 
+from __future__ import annotations
+
 import collections
 from collections.abc import Callable, Iterator, Sequence
 import contextvars

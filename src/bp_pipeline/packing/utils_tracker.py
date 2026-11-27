@@ -20,8 +20,6 @@ import logging
 import re
 import typing
 
-from matplotlib import patches
-import matplotlib.pyplot as plt
 import numpy as np
 import pydantic
 
@@ -480,6 +478,9 @@ def plot_tracker(
   if not tracker:
     print(f'Tracker is None for plot with title "{title}".')
     return
+
+  from matplotlib import patches  # pylint: disable=g-import-not-at-top
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
 
   river_start_marker_kwargs = dict(
       marker='*',

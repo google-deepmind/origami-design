@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2026 Google LLC
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>COrigami Editor</title>
+  <meta name="description" content="Single-screen interactive 3D origami design & folding editor powered by client-side Python WebAssembly (bp-pipeline): click any flap or sub-flap to shape in 3D, edit stick figures, packings, and crease patterns locally.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2 22 8.5 12 15 2 8.5z' fill='%23b83a2d'/%3E%3Cpath d='M2 13l10 6.5L22 13 12 22z' fill='%231d4ed8'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <!-- three.js loads for WebGL rendering; Python WASM (Pyodide) boots lazily in a Web Worker only when running pipeline tools or folding raw files. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div id="drop-overlay" class="drop-overlay" hidden>
+    <div class="drop-card">
+      <strong>Drop origami file to fold locally</strong>
+      <span>Supports <code>.fold</code>, <code>.svg</code>, <code>.cp</code>, <code>.bps</code>, <code>stick_figure.json</code>, and <code>.zip</code></span>
+      <small>100% local in-browser Python WebAssembly &middot; zero files uploaded</small>
+    </div>
+  </div>
+
+  <!-- Single-row compact top bar (52px) -->
+  <header class="site-header">
+    <div class="header-left">
+      <a class="brand" href="./">COrigami Editor</a>
+      <button id="toggle-gallery" class="model-picker-btn" type="button" aria-expanded="false" title="Switch showcase model">
+        <span class="picker-prefix">Model:</span>
+        <strong id="header-model-name">Loading…</strong>
+        <span aria-hidden="true">▾</span>
+      </button>
+      <span class="privacy-pill" title="All file parsing, packing, solving, shaping, and 3D folding run locally inside your browser. No user files or analytics are ever uploaded.">🔒 100% Local WASM</span>
+    </div>
+
+    <nav class="actions">
+      <span id="wasm-status" class="wasm-status" hidden></span>
+      <button id="wasm-cancel" class="button" type="button" hidden title="Cancel active Python WASM operation">Cancel</button>
+      <label class="button primary" title="Drop or select .fold, .svg, .cp, .bps, stick_figure.json, or .zip to fold locally in your browser (never uploaded)">
+        📂 Open / Drop File
+        <input id="file" type="file" accept=".fold,.svg,.cp,.ori,.bps,.json,.zip" multiple hidden>
+      </label>
+      <a class="button" href="../" title="Open COrigami Showcase Studio">Studio</a>
+      <a class="button" href="https://arxiv.org/abs/2606.26299">Paper</a>
+      <a class="button" href="https://github.com/google-deepmind/origami-design">GitHub</a>
+      <button id="theme" class="button" type="button" aria-label="Switch between light and dark theme" title="Toggle light/dark theme">◐</button>
+    </nav>
+  </header>
+
+  <!-- Floating Showcase Model Picker Popover (replaces permanent scrolling top filmstrip) -->
+  <div id="gallery-popover" class="gallery-popover" hidden>
+    <div class="gallery-popover-head">
+      <strong>Choose a Showcase Origami Model</strong>
+      <span class="editor-note">Or drag &amp; drop any <code>.fold</code>, <code>.svg</code>, <code>.cp</code>, <code>.bps</code>, or <code>stick_figure.json</code> onto the page</span>
+      <button id="close-gallery" type="button" class="mini-btn" aria-label="Close model picker">✕</button>
+    </div>
+    <nav id="gallery" class="gallery-grid" aria-label="Showcase models"></nav>
+  </div>
+
+  <!-- Full-Viewport Single-Screen Workbench (zero outer scrollbar) -->
+  <main class="app-shell">
+    <div id="studio-grid" class="studio">
+      <!-- Left Pane: Live 3D Origami Stage + Compact 2-Row Playback Dock -->
+      <section class="card left-stage-card" aria-label="3D model">
+        <div class="viewport">
+          <canvas id="canvas"></canvas>
+          <div id="pins" class="pins" hidden></div>
+          <div class="overlay">
+            <div class="title-block">
+              <h1 id="title"></h1>
+              <p id="subtitle"></p>
+              <dl class="stage-metrics" aria-label="Model statistics">
+                <div><dt>Grid</dt><dd id="grid"></dd></div>
+                <div><dt>Sticks</dt><dd id="stick-count"></dd></div>
+                <div><dt>Creases</dt><dd id="crease-count"></dd></div>
+                <div title="Mean edge-length error of the folded model"><dt>Strain</dt><dd id="strain"></dd></div>
+              </dl>
+            </div>
+            <div class="views" role="toolbar" aria-label="Camera">
+              <button type="button" data-view="hero">Hero</button>
+              <button type="button" data-view="side">Side</button>
+              <button type="button" data-view="front">Front</button>
+              <button type="button" data-view="top">Top</button>
+              <label class="chip"><input id="rotate" type="checkbox" checked>Rotate</label>
+            </div>
+          </div>
+          <div id="flap-hover-pill" class="flap-hover-pill" hidden></div>
+          <p id="status" class="status" role="status"></p>
+        </div>
+
+        <div class="dock">
+          <div class="fold-row">
+            <button id="play" class="button primary" type="button">Unfold</button>
+            <div class="scrubber">
+              <div id="phase-track" class="phase-track" aria-hidden="true"></div>
+              <input id="fold" type="range" min="0" max="100" step="0.25" value="100" aria-label="Folding progress">
+            </div>
+            <output id="fold-value" for="fold">100%</output>
+            <div class="milestones" role="group" aria-label="Folding milestones">
+              <button type="button" data-jump="0">Flat</button>
+              <button id="jump-base" type="button" data-jump="" title="Jump to the razor-flat box-pleated base">Base</button>
+              <button type="button" data-jump="1">Folded</button>
+              <button id="speed" type="button" title="Cycle playback speed">1&times;</button>
+              <label class="chip mini-chip" title="Continuously fold and unfold back and forth"><input id="loop" type="checkbox">Loop</label>
+            </div>
+          </div>
+
+          <div class="options">
+            <button id="stage-caption" class="stage-caption" type="button" title="View Multi-Stage Folding Schedule &amp; Exports">Final 3D Sculpted Origami</button>
+            <div class="options-right">
+              <div id="swatches" class="swatches" role="group" aria-label="Washi paper presets"></div>
+              <label title="Top paper color">Top <input id="color-top" type="color"></label>
+              <label title="Reverse paper color">Back <input id="color-bottom" type="color"></label>
+              <label class="chip mini-chip" title="Fold progressively through box-pleated base collapse and sequential shaping stages"><input id="staged" type="checkbox" checked>Multi-stage</label>
+              <label class="chip mini-chip"><input id="creases" type="checkbox">Creases</label>
+              <label class="chip mini-chip" title="Label the tip of each flap"><input id="show-pins" type="checkbox">Labels</label>
+              <label class="chip mini-chip" title="Make the paper translucent"><input id="xray" type="checkbox">X-ray</label>
+              <button id="quick-video" class="mini-btn" type="button" title="Record a 1080p folding and 360° rotation video">🎥 Video</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Pane: Unified Single-Card Workspace with 5 Clean Modes (zero competing stacked scrollers) -->
+      <aside class="card workspace-card" aria-label="Origami design &amp; editing workspace">
+        <!-- Spacious 5-Mode Segmented Navigation Bar (Keys 1–5) -->
+        <div id="tabs" class="workspace-nav" role="tablist" aria-label="Editor workspaces">
+          <button type="button" role="tab" data-tab="shape" aria-selected="true" title="Click flaps or sub-flaps in 3D and apply crease-backed shaping (Key 1)">
+            <span class="step-num">1</span>Shape 3D
+          </button>
+          <button type="button" role="tab" data-tab="pattern" aria-selected="false" title="Inspect or draw 2D Mountain/Valley crease patterns &amp; solved bases (Key 2)">
+            <span class="step-num">2</span>Creases
+          </button>
+          <button type="button" role="tab" data-tab="packing" aria-selected="false" title="Inspect flap/river packing or drag circle centers on the grid (Key 3)">
+            <span class="step-num">3</span>Packing
+          </button>
+          <button type="button" role="tab" data-tab="sticks" aria-selected="false" title="Edit 3D stick-figure skeleton or generate a new origami creature (Key 4)">
+            <span class="step-num">4</span>Skeleton
+          </button>
+          <button type="button" role="tab" data-tab="export" aria-selected="false" title="Step-by-step folding schedule, 1080p video recording, and local file exports (Key 5)">
+            <span class="step-num">5</span>Stages &amp; Export
+          </button>
+        </div>
+
+        <!-- MODE 1: SHAPE 3D (Compact Flap Selector + Shaper Controls on Top, Live 2D Map Below) -->
+        <section id="flap-picker-box" class="shape-top-section" aria-label="3D Flap &amp; Sub-Flap Shaper">
+          <div class="flap-selector-bar">
+            <select id="flap-select" class="flap-select" aria-label="Select a flap or unmerged sub-flap to shape">
+              <option value="">— Click 3D model or choose a flap / sub-flap —</option>
+            </select>
+            <label class="chip mini-chip" title="Include river regions in the dropdown"><input id="show-river-chips" type="checkbox">Rivers</label>
+            <label id="flap-mirror-wrap" class="chip mini-chip" title="Shape Left &amp; Right counterparts together"><input id="flap-mirror" type="checkbox" checked>Mirror L↔R</label>
+            <button id="flap-top-undo" type="button" class="mini-btn" disabled title="Undo last flap fold (Ctrl+Z)">↶ Undo</button>
+            <button id="flap-top-reset" type="button" class="mini-btn" disabled title="Reset model to original">↺ Reset</button>
+          </div>
+
+          <!-- Calm Empty State when no flap is selected yet (zero scroll) -->
+          <div id="flap-empty-state" class="flap-empty-state">
+            <p class="flap-hint">👆 Click any wing, limb, head, or tail on the <strong>3D model</strong> or <strong>2D map below</strong> to shape it with real creases — or quick-pick:</p>
+            <div id="quick-flap-pills" class="seg-group"></div>
+          </div>
+
+          <!-- Active Flap / Sub-Flap Shaper Card -->
+          <div id="flap-shaper-card" class="flap-shaper-card" hidden>
+            <div class="flap-shaper-top">
+              <div class="flap-title-wrap">
+                <span class="flap-badge">✦ Shaping</span>
+                <strong id="flap-selected-title">wing L</strong>
+                <span id="flap-mirror-badge" class="mirror-pill" hidden>↔ wing R</span>
+                <span id="flap-crease-badge" class="crease-delta-pill" hidden>+0 creases</span>
+              </div>
+              <div class="seg-group">
+                <button id="flap-stack-btn" type="button" class="mini-btn accent-btn" title="Lock in this fold and reset sliders to stack another fold">+ Stack Fold</button>
+                <button id="flap-undo-btn" type="button" class="mini-btn" disabled title="Undo last fold">↶</button>
+                <button id="flap-reset-btn" type="button" class="mini-btn" disabled title="Reset all shaping">↺</button>
+                <button id="flap-done-btn" type="button" class="mini-btn" title="Deselect flap (Esc)">✕</button>
+              </div>
+            </div>
+
+            <!-- Unmerged Chain Stepper (shown only when region merges multiple sticks, e.g. thigh -> shin -> claw) -->
+            <div id="flap-chain-bar" class="flap-chain-bar" hidden>
+              <span class="chain-caption">Chain:</span>
+              <div id="flap-chain-pills" class="seg-group"></div>
+            </div>
+
+            <div class="seg-group flap-mode-bar" role="group" aria-label="Crease shaping fold style">
+              <button type="button" class="tool-btn active" data-flap-mode="bend" title="Out-of-plane Mountain/Valley hinge fold across the flap">↱ Bend</button>
+              <button type="button" class="tool-btn" data-flap-mode="narrow" title="Diagonal side-tuck / taper creases to narrow flap width">⊳ Narrow</button>
+              <button type="button" class="tool-btn" data-flap-mode="crimp" title="Coupled 2-crease Mountain+Valley crimp turning the flap sideways">⇄ Crimp</button>
+              <button type="button" class="tool-btn" data-flap-mode="curve" title="Multi-crease polygonal arc curl">⌒ Curve</button>
+              <button type="button" class="tool-btn" data-flap-mode="pleat" title="Alternating Mountain/Valley zigzag accordion pleats">⚡ Pleat</button>
+            </div>
+
+            <div id="flap-bend-controls" class="flap-sliders">
+              <label class="flap-slider-row">
+                <span id="flap-pitch-label">Fold Angle</span>
+                <input id="flap-pitch" type="range" min="-168" max="168" step="1" value="0">
+                <output id="flap-pitch-val">0°</output>
+              </label>
+              <label class="flap-slider-row">
+                <span>Joint Depth</span>
+                <input id="flap-depth" type="range" min="8" max="85" step="1" value="30">
+                <output id="flap-depth-val">30%</output>
+              </label>
+              <label id="flap-steps-row" class="flap-slider-row" hidden>
+                <span id="flap-steps-label">Crease Steps</span>
+                <input id="flap-steps" type="range" min="2" max="5" step="1" value="3">
+                <output id="flap-steps-val">3</output>
+              </label>
+            </div>
+
+            <div id="flap-narrow-controls" class="flap-sliders" hidden>
+              <label class="flap-slider-row">
+                <span>Taper Width</span>
+                <input id="flap-narrow" type="range" min="0" max="80" step="1" value="0">
+                <output id="flap-narrow-val">0%</output>
+              </label>
+              <label class="flap-slider-row">
+                <span>Tuck Angle</span>
+                <input id="flap-tuck-angle" type="range" min="-170" max="170" step="5" value="165">
+                <output id="flap-tuck-val">+165°</output>
+              </label>
+              <div class="tool-row">
+                <label class="flap-slider-row flex-1">
+                  <span>Start Depth</span>
+                  <input id="flap-narrow-depth" type="range" min="5" max="70" step="1" value="12">
+                  <output id="flap-narrow-depth-val">12%</output>
+                </label>
+                <label class="chip mini-chip" title="Tuck both side margins symmetrically (uncheck for 1-sided bevel)"><input id="flap-both-sides" type="checkbox" checked>Both Sides</label>
+              </div>
+            </div>
+
+            <div id="flap-crimp-controls" class="flap-sliders" hidden>
+              <label class="flap-slider-row">
+                <span>Turn Angle</span>
+                <input id="flap-turn" type="range" min="-85" max="85" step="1" value="0">
+                <output id="flap-turn-val">0°</output>
+              </label>
+              <label class="flap-slider-row">
+                <span>Crimp Depth</span>
+                <input id="flap-crimp-depth" type="range" min="10" max="75" step="1" value="25">
+                <output id="flap-crimp-depth-val">25%</output>
+              </label>
+            </div>
+
+            <div class="flap-presets-row">
+              <span class="preset-caption">Quick:</span>
+              <button type="button" class="mini-btn" data-flap-preset="lift">↑ Lift +40°</button>
+              <button type="button" class="mini-btn" data-flap-preset="droop">↓ Droop −40°</button>
+              <button type="button" class="mini-btn" data-flap-preset="narrow">⊳ Taper 55%</button>
+              <button type="button" class="mini-btn" data-flap-preset="crimp">⇄ Turn +35°</button>
+              <button type="button" class="mini-btn" data-flap-preset="curl">⌒ Curl</button>
+            </div>
+
+            <details class="adv-drawer">
+              <summary>Python WASM Crease-Pattern Actuators (<code>bp_pipeline</code>)</summary>
+              <div class="wasm-actuator-box">
+                <p id="wasm-actuator-note" class="editor-note">Applies exact 2D box-pleating actuators from <code>bp_pipeline</code>.</p>
+                <div class="tool-row">
+                  <select id="actuator-select" class="mini-select flex-1" aria-label="Shaping actuator tool"></select>
+                  <label class="chip mini-chip"><input id="actuator-sym" type="checkbox" checked>Mirror</label>
+                </div>
+                <div id="actuator-params" class="adv-grid"></div>
+                <div class="tool-row">
+                  <button id="apply-actuator-btn" type="button" class="mini-btn accent-btn flex-1">Apply WASM Actuator</button>
+                  <button id="run-reshape-btn" type="button" class="mini-btn" title="Auto-pose entire base to match 3D stick figure">⚡ Auto-Pose All</button>
+                  <span id="fidelity-badge" class="fidelity-badge" hidden></span>
+                </div>
+                <div id="shaping-history-list" class="history-list" hidden></div>
+              </div>
+            </details>
+          </div>
+
+          <!-- Companion 2D Map Switcher inside Shape 3D mode -->
+          <div class="shape-map-bar">
+            <div class="seg-group" role="group" aria-label="Companion 2D map mode">
+              <button type="button" class="tool-btn active" data-shape-map="pattern" title="Watch live Mountain/Valley creases added on the sheet (click any flap to select)">📐 Live Creases</button>
+              <button type="button" class="tool-btn" data-shape-map="packing" title="Click any flap or sub-flap territory on the square sheet">🗺️ Sub-Flap Map</button>
+            </div>
+            <div class="seg-group">
+              <label class="chip mini-chip" title="Zoom the 2D crease view onto the selected flap so new creases are crystal clear"><input id="zoom-selected-flap" type="checkbox" checked>🔍 Zoom Flap</label>
+              <button id="jump-full-cp-btn" type="button" class="mini-btn" title="Open full-height Crease Pattern workspace">Full CP →</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- MODE 2 HEADER: CREASES (Shaped CP | Solved Base | Draw & Edit CP) -->
+        <div id="pattern-header" class="mode-subbar" hidden>
+          <div class="seg-group" role="group" aria-label="Crease pattern view mode">
+            <button type="button" class="tool-btn active" data-cp-submode="shaped">Shaped CP</button>
+            <button type="button" class="tool-btn" data-cp-submode="base" id="cp-submode-base-btn">Solved Base</button>
+            <button type="button" class="tool-btn" data-cp-submode="edit" id="toggle-cp-edit-btn">✏️ Draw / Edit CP</button>
+          </div>
+          <div class="seg-group">
+            <button id="cp-quick-blank-btn" type="button" class="mini-btn" title="Start folding from a blank square sheet">📄 Blank Sheet</button>
+            <button id="base-resolve-inline-btn" type="button" class="mini-btn" hidden>⚡ Solver Options</button>
+          </div>
+        </div>
+
+        <!-- Base Solver Toolbar (inside Creases -> Solved Base) -->
+        <div id="base-toolbar" class="editor-toolbar" hidden>
+          <div class="tool-row">
+            <button id="solve-wasm-btn" type="button" class="button primary flex-1">⚡ Re-Solve Flat-Foldable Base (WASM)</button>
+            <button id="base-to-cp-btn" type="button" class="mini-btn">Load Base into CP Editor →</button>
+          </div>
+          <div class="adv-grid">
+            <label class="chip mini-chip"><input id="sol-local-ff" type="checkbox" checked>Local FF</label>
+            <label class="chip mini-chip"><input id="sol-global-ff" type="checkbox" checked>Global FF</label>
+            <label class="chip mini-chip"><input id="sol-remove-cc" type="checkbox">No Central Crease</label>
+            <label class="chip mini-chip"><input id="sol-partition" type="checkbox" checked>Partition Order</label>
+            <label class="chip mini-chip"><input id="sol-no-trap" type="checkbox" checked>No Trapping</label>
+            <label class="mini-field">Steps <input id="sol-steps" class="mini-num" type="number" min="100" max="20000" step="500" value="2500"></label>
+            <label class="mini-field">Time <input id="sol-time" class="mini-num" type="number" min="2" max="120" step="5" value="25"></label>
+          </div>
+        </div>
+
+        <!-- Crease Pattern Drawing Toolbar (inside Creases -> Draw / Edit CP) -->
+        <div id="cp-toolbar" class="editor-toolbar" hidden>
+          <div class="tool-row">
+            <div class="seg-group" role="group" aria-label="CP editing tool">
+              <button type="button" class="tool-btn active" data-cp-tool="select" title="Click crease to inspect or change fold angle (S)">🔍 Inspect</button>
+              <button type="button" class="tool-btn" data-cp-tool="draw" title="Click-drag to draw new crease segments (D)">✏️ Draw</button>
+              <button type="button" class="tool-btn" data-cp-tool="assign" title="Click or drag across creases to paint M/V/F/B (A)">🎨 Paint</button>
+              <button type="button" class="tool-btn" data-cp-tool="move" title="Drag existing vertex on grid (V)">✥ Move</button>
+              <button type="button" class="tool-btn" data-cp-tool="erase" title="Click crease segment to erase (E)">⌫ Erase</button>
+            </div>
+            <div class="seg-group" role="group" aria-label="Crease assignment">
+              <button type="button" class="assign-btn active" data-cp-assign="M" title="Mountain fold (-180°)">M</button>
+              <button type="button" class="assign-btn" data-cp-assign="V" title="Valley fold (+180°)">V</button>
+              <button type="button" class="assign-btn" data-cp-assign="F" title="Flat auxiliary line (0°)">F</button>
+              <button type="button" class="assign-btn" data-cp-assign="B" title="Paper boundary (0°)">B</button>
+            </div>
+            <button id="cp-clear" type="button" class="mini-btn" title="Reset to blank square sheet">📄 Blank</button>
+          </div>
+          <div class="tool-row">
+            <label class="mini-field">Snap
+              <select id="cp-snap" class="mini-select">
+                <option value="grid" selected>Grid</option>
+                <option value="half">½ Grid</option>
+                <option value="free">Free</option>
+              </select>
+            </label>
+            <label class="mini-field">∠
+              <select id="cp-angle-lock" class="mini-select">
+                <option value="45" selected>45°</option>
+                <option value="22.5">22.5°</option>
+                <option value="off">Free</option>
+              </select>
+            </label>
+            <label class="mini-field">Grid
+              <input id="cp-grid-size" class="mini-num" type="number" min="2" max="96" value="16">
+            </label>
+            <label class="chip mini-chip"><input id="cp-mirror" type="checkbox">Mirror</label>
+            <label class="chip mini-chip"><input id="cp-violations" type="checkbox">FF Check</label>
+            <label class="chip mini-chip"><input id="cp-auto-fold" type="checkbox" checked>Live 3D</label>
+            <button id="cp-zoom-reset" type="button" class="mini-btn" title="Reset zoom">1:1</button>
+            <button id="cp-undo" type="button" class="mini-btn" title="Undo (Ctrl+Z)">↶</button>
+            <button id="cp-redo" type="button" class="mini-btn" title="Redo (Ctrl+Y)">↷</button>
+            <button type="button" class="mini-btn" data-cp-transform="mirrorH" title="Mirror horizontally">⇹</button>
+            <button type="button" class="mini-btn" data-cp-transform="mirrorV" title="Mirror vertically">↕</button>
+            <button type="button" class="mini-btn" data-cp-transform="rotCW" title="Rotate 90° clockwise">⟳</button>
+            <button type="button" class="mini-btn" data-cp-transform="invertMV" title="Invert Mountain ↔ Valley">M↔V</button>
+            <button id="cp-check-ff" type="button" class="mini-btn" title="Verify global layer ordering via Python WASM">✓ FF</button>
+            <button id="cp-refold-wasm" type="button" class="mini-btn accent-btn" title="Fold arbitrary 2D graph in Python WASM">Fold WASM</button>
+          </div>
+          <div id="cp-edge-inspector" class="edge-inspector" hidden>
+            <span id="cp-edge-label">Edge</span>
+            <div class="angle-steps">
+              <button type="button" class="mini-btn" data-angle-step="-90">−90°</button>
+              <button type="button" class="mini-btn" data-angle-step="-15">−15°</button>
+              <button type="button" class="mini-btn" data-angle-step="-1">−1°</button>
+              <input id="cp-edge-angle" class="mini-num angle-num" type="number" min="-180" max="180" step="1" value="-180">
+              <button type="button" class="mini-btn" data-angle-step="1">+1°</button>
+              <button type="button" class="mini-btn" data-angle-step="15">+15°</button>
+              <button type="button" class="mini-btn" data-angle-step="90">+90°</button>
+              <button id="cp-edge-delete" type="button" class="mini-btn danger-btn" title="Delete selected crease">✕</button>
+            </div>
+          </div>
+          <p id="cp-ff-readout" class="editor-note" hidden></p>
+        </div>
+
+        <!-- MODE 3 HEADER: PACKING -->
+        <div id="packing-header" class="mode-subbar" hidden>
+          <div class="seg-group" role="group" aria-label="Packing mode">
+            <button type="button" class="tool-btn active" data-pack-submode="map">🗺️ Region Map</button>
+            <button type="button" class="tool-btn" data-pack-submode="edit" id="toggle-pack-edit-btn">✏️ Drag Grid Circles (WASM)</button>
+          </div>
+          <div class="seg-group">
+            <button id="pack-wasm-btn" type="button" class="mini-btn">↻ Auto-Repack</button>
+            <button id="pack-solve-btn" type="button" class="mini-btn accent-btn">⚡ Solve Base →</button>
+          </div>
+        </div>
+
+        <div id="packing-toolbar" class="editor-toolbar" hidden>
+          <div class="tool-row">
+            <label class="chip mini-chip"><input id="pack-mirror" type="checkbox" checked>Mirror L↔R</label>
+            <label class="chip mini-chip"><input id="pack-show-creases" type="checkbox" checked>Packing CP</label>
+            <label class="chip mini-chip"><input id="pack-show-circles" type="checkbox" checked>Circles</label>
+            <label class="chip mini-chip"><input id="pack-show-labels" type="checkbox" checked>Labels</label>
+            <label class="mini-field">Grid <input id="pack-grid-size" class="mini-num" type="number" min="4" max="96" value="16"></label>
+            <button id="pack-validate-btn" type="button" class="mini-btn" hidden>✓ Validate</button>
+          </div>
+          <details class="adv-drawer">
+            <summary>Packer Engine &amp; Search Options</summary>
+            <div class="adv-grid">
+              <label class="mini-field">Engine
+                <select id="pack-method" class="mini-select">
+                  <option value="pack" selected>Backtracking Pack (Compact)</option>
+                  <option value="stack">Fast Stacking (Instant)</option>
+                </select>
+              </label>
+              <label class="mini-field">Retries <input id="pack-retries" class="mini-num" type="number" min="1" max="40" value="8"></label>
+              <label class="mini-field">Time (s) <input id="pack-timeout" class="mini-num" type="number" min="3" max="120" value="15"></label>
+              <label class="chip mini-chip"><input id="pack-paired-axis" type="checkbox">Paired Axis</label>
+            </div>
+          </details>
+          <p id="pack-validation" class="editor-note" hidden></p>
+        </div>
+
+        <!-- MODE 4 HEADER: SKELETON (Interactive 3D Stick-Figure Editor active immediately!) -->
+        <div id="sticks-toolbar" class="editor-toolbar" hidden>
+          <div class="tool-row">
+            <select id="example-tree-select" class="mini-select flex-1" aria-label="Built-in stick figure templates">
+              <option value="">— Load built-in stick figure (47 trees) —</option>
+              <option value="cat">cat (fast)</option>
+              <option value="bird">bird (fast)</option>
+              <option value="star">star (fast)</option>
+              <option value="human">human</option>
+              <option value="wolf">wolf</option>
+              <option value="scorpion">scorpion</option>
+              <option value="bug">bug</option>
+            </select>
+            <button id="new-tree-btn" type="button" class="mini-btn">+ New Creature</button>
+            <label class="chip mini-chip"><input id="sf-mirror" type="checkbox" checked>Mirror L↔R</label>
+            <label class="chip mini-chip"><input id="sf-show-labels" type="checkbox">Labels</label>
+            <label class="chip mini-chip"><input id="sf-show-axes" type="checkbox" checked>Axes</label>
+            <button id="sf-reset-cam" type="button" class="mini-btn">Center</button>
+          </div>
+          <div id="sf-stick-controls" class="sf-controls">
+            <div class="tool-row sf-compact-top">
+              <span>Stick: <strong id="sf-selected-name">spine</strong></span>
+              <label class="mini-field">Len <input id="sf-length" class="mini-num" type="number" min="1" max="64" step="1" value="4"></label>
+              <label class="mini-field">Wid <input id="sf-width" class="mini-num" type="number" min="1" max="10" step="1" value="1"></label>
+              <label class="chip mini-chip"><input id="sf-shaping-flap" type="checkbox">Shaping</label>
+              <button id="sf-add-child" type="button" class="mini-btn">+ Stick</button>
+              <button id="sf-add-pair" type="button" class="mini-btn">+ L/R Pair</button>
+              <button id="sf-delete" type="button" class="mini-btn danger-btn">Del</button>
+            </div>
+            <div class="sf-dual-sliders">
+              <label class="slider-field">
+                <span>Azimuth</span>
+                <input id="sf-azimuth-range" type="range" min="-180" max="180" step="1" value="0">
+                <input id="sf-azimuth" class="mini-num" type="number" min="-180" max="180" step="5" value="0">
+              </label>
+              <label class="slider-field">
+                <span>Elevation</span>
+                <input id="sf-elevation-range" type="range" min="-89" max="89" step="1" value="0">
+                <input id="sf-elevation" class="mini-num" type="number" min="-89" max="89" step="5" value="0">
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- FLEXIBLE MAIN CANVAS / STAGE AREA (expands to fill full remaining height!) -->
+        <div class="inspector-stage-body">
+          <svg id="diagram" class="diagram" role="img" preserveAspectRatio="xMidYMid meet"></svg>
+
+          <div id="stick-stage-wrap" class="stick-stage-wrap" hidden>
+            <div id="stick-stage" class="stick-stage"></div>
+            <div class="stick-cta-bar">
+              <button id="sf-pack-btn" type="button" class="button">Pack Grid →</button>
+              <button id="sf-full-pipeline-btn" type="button" class="button primary flex-1">⚡ Fold Creature (Pack + Solve + Pose in WASM)</button>
+            </div>
+          </div>
+
+          <!-- MODE 5: STAGES & EXPORT (Compact Export/Video top card + Spacious Single Schedule List) -->
+          <div id="export-stage" class="export-stage" hidden>
+            <div id="export-panel" class="export-card">
+              <p id="summary" class="model-summary"></p>
+              <ul id="techniques" class="tags"></ul>
+
+              <div class="export-grid">
+                <div class="export-group">
+                  <h2>1080p Folding Video</h2>
+                  <div class="video-controls">
+                    <select id="video-preset" class="mini-select" aria-label="Video camera and folding choreography"></select>
+                    <label class="chip mini-chip" title="Overlay model title, active stage badge, and progress bar"><input id="video-captions" type="checkbox" checked>Captions</label>
+                    <button id="record-video" class="mini-btn accent-btn" type="button">Record 1080p</button>
+                    <a id="download-video" class="mini-btn" hidden download>Save video</a>
+                  </div>
+                </div>
+
+                <div class="export-group">
+                  <h2>Local File Downloads</h2>
+                  <div class="downloads">
+                    <a id="download-fold" class="mini-btn" download>Folded .fold</a>
+                    <a id="download-svg" class="mini-btn" download="crease_pattern.svg">CP .svg</a>
+                    <a id="download-sticks" class="mini-btn" download>Sticks .json</a>
+                    <button id="download-bps-btn" class="mini-btn" type="button" hidden>BP Studio .bps</button>
+                    <button id="download-zip-btn" class="mini-btn accent-btn" type="button" title="Export self-contained ZIP bundle locally">Bundle .zip</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="schedule-panel" class="schedule-panel">
+              <div id="schedule-meta" class="schedule-meta"></div>
+              <div id="phase-list" class="phase-list" role="list" aria-label="Multi-stage folding steps"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtle 1-Line Context Legend & License Bar -->
+        <div class="workspace-footer">
+          <p class="legend" data-legend="cp">
+            <span class="mountain">Mountain</span>
+            <span class="valley">Valley</span>
+            Reverse side of sheet.
+          </p>
+          <p class="legend" data-legend="packing" hidden>
+            <span class="flap">Flap</span>
+            <span class="river">River</span>
+            <span class="reserved">Reserved</span>
+            <span class="hinge-leg">Hinge</span>
+            Click any zone to select &amp; shape.
+          </p>
+          <p class="legend" data-legend="sticks" hidden>Drag blue joints in 3D to pose, or load any of 47 templates.</p>
+          <p class="legend" data-legend="export" hidden>Click any stage to jump the 3D fold.</p>
+          <span class="license-mini">
+            <a href="https://www.apache.org/licenses/LICENSE-2.0">Apache 2.0</a> &middot;
+            <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>
+          </span>
+        </div>
+      </aside>
+    </div>
+  </main>
+</body>
+</html>

@@ -15,6 +15,8 @@
 
 """Classes for representing model elements (flaps and rivers) during shaping."""
 
+from __future__ import annotations
+
 from collections.abc import Sequence
 import copy
 import dataclasses
@@ -39,8 +41,9 @@ from bp_pipeline.shaping import vector
 from bp_pipeline.solving import utils as solving_utils
 from bp_pipeline.stick_figures import stick_figure as sf_utils
 from bp_pipeline.stick_figures import traversal as tr
-from matplotlib import ticker
-import matplotlib.pyplot as plt
+
+if typing.TYPE_CHECKING:
+  import matplotlib.pyplot as plt
 
 _NEAR_PAPER_BOUNDING_RECTANGLE = rect_utils.Rectangle(
     name='bounding_rect',
@@ -1820,6 +1823,9 @@ def visualize_shaping_elements(
     figsize: tuple[float, float] = (10, 10),
 ) -> tuple[plt.Figure, plt.Axes]:
   """Visualizes the boundaries of shaping flaps and rivers."""
+  from matplotlib import ticker  # pylint: disable=g-import-not-at-top
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
+
   fig, ax = plt.subplots(figsize=figsize)
 
   all_xs: list[float] = [0.0, 1.0]

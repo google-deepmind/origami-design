@@ -15,6 +15,7 @@
 
 """Defines River objects that can be placed on a CreasePatternTracker."""
 
+import collections
 from collections.abc import Sequence
 import dataclasses
 import enum
@@ -24,12 +25,44 @@ from typing import Any, TypedDict
 
 import more_itertools
 import numpy as np
-import scipy.ndimage
 
 from .. import rectangle as shaping_utils
 from . import utils_packing_flaps
 
 DIRS = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # N, E, S, W
+
+
+def _label_4connected(mask: np.ndarray) -> tuple[np.ndarray, int]:
+  """Labels 4-connected True components in a 2D boolean array (1-indexed)."""
+  rows, cols = mask.shape
+  labels = np.zeros((rows, cols), dtype=np.int32)
+  if not np.any(mask):
+    return labels, 0
+  mask_list = mask.tolist()
+  cur_label = 0
+  for r0 in range(rows):
+    row_mask = mask_list[r0]
+    for c0 in range(cols):
+      if not row_mask[c0] or labels[r0, c0] != 0:
+        continue
+      cur_label += 1
+      labels[r0, c0] = cur_label
+      queue = collections.deque([(r0, c0)])
+      while queue:
+        r, c = queue.popleft()
+        if r > 0 and mask_list[r - 1][c] and labels[r - 1, c] == 0:
+          labels[r - 1, c] = cur_label
+          queue.append((r - 1, c))
+        if r + 1 < rows and mask_list[r + 1][c] and labels[r + 1, c] == 0:
+          labels[r + 1, c] = cur_label
+          queue.append((r + 1, c))
+        if c > 0 and mask_list[r][c - 1] and labels[r, c - 1] == 0:
+          labels[r, c - 1] = cur_label
+          queue.append((r, c - 1))
+        if c + 1 < cols and mask_list[r][c + 1] and labels[r, c + 1] == 0:
+          labels[r, c + 1] = cur_label
+          queue.append((r, c + 1))
+  return labels, cur_label
 
 
 def _get_connected_components_areas(
@@ -40,7 +73,7 @@ def _get_connected_components_areas(
   """Computes unoccupied area on each side of river reachable from river bank."""
   if not seeds1 and not seeds2:
     return 0, 0
-  labels, _ = scipy.ndimage.label(~forbidden)
+  labels, _ = _label_4connected(~forbidden)
   counts = np.bincount(labels.ravel())
   counts[0] = 0
   area1 = 0
@@ -1458,7 +1491,7 @@ def _get_reachable_mask_from_seeds(
   if not np.all(free[rows_arr, cols_arr]):
     free = free.copy()
     free[rows_arr, cols_arr] = True
-  labels, _ = scipy.ndimage.label(free)
+  labels, _ = _label_4connected(free)
   seed_labels = np.unique(labels[rows_arr, cols_arr])
   seed_labels = seed_labels[seed_labels != 0]
   return np.isin(labels, seed_labels)

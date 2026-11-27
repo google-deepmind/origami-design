@@ -15,11 +15,14 @@
 
 """Partitions a box-pleating crease pattern into distinct groups of hinges."""
 
+from __future__ import annotations
+
 from collections.abc import Iterable
 import dataclasses
 import functools
 import itertools
 import types
+import typing
 from typing import Any, Self
 
 from absl import logging
@@ -27,11 +30,12 @@ from bp_pipeline.crease_pattern import crease as crease_lib
 from bp_pipeline.crease_pattern import crease_pattern
 from bp_pipeline.crease_pattern import point as point_lib
 from bp_pipeline.crease_pattern import vertex as vertex_lib
-from bp_pipeline.crease_pattern import visualize
 from bp_pipeline.solving import utils as box_pleating_utils
 import immutabledict
-from matplotlib import axes
-from matplotlib import figure
+
+if typing.TYPE_CHECKING:
+  from matplotlib import axes
+  from matplotlib import figure
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True)
@@ -92,6 +96,8 @@ class HingePartition:
     Returns:
       A tuple containing the Matplotlib Figure and Axes objects.
     """
+    from bp_pipeline.crease_pattern import visualize  # pylint: disable=g-import-not-at-top
+
     cp = crease_pattern.CreasePattern(
         [
             *(c.crease for c in self.hinges.creases | self.ridges.creases),

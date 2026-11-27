@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Deploy COrigami Studio to GitHub Pages
+name: Deploy COrigami Studio and Editor to GitHub Pages
 
 on:
   push:
     branches: ["main"]
     paths:
       - "docs/**"
+      - "src/bp_pipeline/**"
+      - "pyproject.toml"
+      - "scripts/serve_studio.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -47,6 +50,9 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Build bp_pipeline wheel for Pyodide
+        run: python3 scripts/serve_studio.py --build-wheel docs/py/bp_pipeline-0.1.0-py3-none-any.whl
 
       - name: Upload static studio artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1

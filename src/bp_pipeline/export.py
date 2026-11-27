@@ -15,6 +15,8 @@
 
 """Export utilities for BoxPleatingTreeData (.bps.json), SVG (.svg), and FOLD (.fold)."""
 
+from __future__ import annotations
+
 import collections
 from collections.abc import Mapping, Sequence
 import copy
@@ -544,7 +546,7 @@ class BpsImportResult:
   first_passing_config: hinges.SolverConfig | None = None
 
   @property
-  def stick_figure(self) -> stick_lib.StickFigure:
+  def stick_figure(self) -> stick_figure_lib.StickFigure:
     """Returns the source stick figure of the design."""
     return self.design.source
 

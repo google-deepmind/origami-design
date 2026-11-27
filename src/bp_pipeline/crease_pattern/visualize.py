@@ -15,19 +15,19 @@
 
 """Visualize a crease pattern as an image."""
 
+from __future__ import annotations
+
 from collections.abc import Sequence
 import io
 import math
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from bp_pipeline.crease_pattern import crease
 from bp_pipeline.crease_pattern import crease_pattern
 from bp_pipeline.crease_pattern import vertex
-from matplotlib import axes
-from matplotlib import lines
-from matplotlib import patches
-from matplotlib import pyplot as plt
-from matplotlib import ticker
+
+if TYPE_CHECKING:
+  from matplotlib import axes  # pylint: disable=g-import-not-at-top,g-bad-import-order
 
 
 def draw_crease(
@@ -37,6 +37,7 @@ def draw_crease(
     lw: float = 0.8,
 ) -> None:
   """Draws a line representing the crease on a matplotlib axis."""
+  from matplotlib import lines  # pylint: disable=g-import-not-at-top
   line = lines.Line2D(
       [creaseline.p1.x, creaseline.p2.x],
       [creaseline.p1.y, creaseline.p2.y],
@@ -79,6 +80,7 @@ def draw_vertex(
   ax.plot(*point, marker='o', markersize=vertex_size, color=vertex_color)
 
   if show_invalid and not vert.is_valid:
+    from matplotlib import pyplot as plt  # pylint: disable=g-import-not-at-top
     highlight = plt.Circle(point, 0.02, color='red', fill=False, lw=1.5)
     ax.add_patch(highlight)
 
@@ -128,6 +130,9 @@ def draw_cp(
   Returns:
     The matplotlib figure and axis.
   """
+  from matplotlib import pyplot as plt  # pylint: disable=g-import-not-at-top
+  from matplotlib import ticker  # pylint: disable=g-import-not-at-top
+
   if ax is None:
     fig, ax = plt.subplots(figsize=figsize)
   else:
@@ -269,6 +274,8 @@ def folding_grid(
   Returns:
     The matplotlib figure and axes.
   """
+  from matplotlib import pyplot as plt  # pylint: disable=g-import-not-at-top
+
   fold_steps = max(c.fold_step for c in pattern.creases) + 1
   rows, cols = math.ceil(fold_steps / cols), min(fold_steps, cols)
   fig, axs = plt.subplots(
@@ -289,6 +296,7 @@ def render_cps_to_png_bytes(
   """Renders a list of CreasePatterns into a single PNG image as bytes."""
   if not cps:
     return b''
+  from matplotlib import pyplot as plt  # pylint: disable=g-import-not-at-top
 
   num_cps = len(cps)
   grid_size = math.ceil(math.sqrt(num_cps))
@@ -323,6 +331,8 @@ def render_highlighted_cps_to_png_bytes(
   """Renders CPs into a PNG with sacrificial and width-based overlays."""
   if not cps:
     return b''
+  from matplotlib import patches  # pylint: disable=g-import-not-at-top
+  from matplotlib import pyplot as plt  # pylint: disable=g-import-not-at-top
 
   sacrificial_suffixes = (
       '_sf1',

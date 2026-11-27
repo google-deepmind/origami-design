@@ -12,6 +12,16 @@ schedules, exports 1080p folding and 360° turntable videos, and displays their
 crease patterns, packings and stick figures. It also opens the `shaped_3d.fold`
 that `bp-pipeline -o` writes for a design of your own.
 
+**Interactive Editor (Python WASM):**
+[COrigami Editor](https://google-deepmind.github.io/origami-design/editor/) is a
+separate in-browser origami design app powered by client-side Python
+WebAssembly (Pyodide + `bp_pipeline`): click any flap or unmerged sub-flap on
+the 3D model to apply crease-backed shaping (`Bend`, `Narrow`, `Crimp`, `Curve`,
+`Pleat`, and `bp_pipeline` actuators), edit 3D stick-figure skeletons,
+box-pleating grid packings, and crease patterns, or drop any `.fold`, `.svg`,
+`.cp`, `.bps`, `stick_figure.json`, or `.zip` file to fold locally in browser
+memory with zero server uploads.
+
 ## Showcase
 
 Precomputed showcase models; each opens in the studio.
@@ -41,8 +51,10 @@ Precomputed showcase models; each opens in the studio.
 
 <!-- enableFinding(LINE_OVER_80) -->
 
-The studio is the static site under [`docs/`](docs/). A showcase model is a
-directory `docs/models/<slug>/` with:
+The showcase studio is the static site under [`docs/`](docs/), and the separate
+Python WASM editor lives under [`docs/editor/`](docs/editor/) (sharing
+[`docs/models/`](docs/models/) and the core folding engine). A showcase model is
+a directory `docs/models/<slug>/` with:
 
 -   `shaped_3d.fold`, in the extended [FOLD](https://github.com/edemaine/fold)
     v1.1 layout that `bp-pipeline -o` writes (`file_frames[0]` plus the `bp:`
@@ -59,7 +71,10 @@ To add one, also give it an entry in
 not say: `slug`, `title`, `subtitle`, `summary`, `techniques`, optional
 `pipeline_args` (extra `bp-pipeline` CLI flags for reproducible models), the
 paper colors `colorTop` and `colorBottom`, and the `camera` angles of the
-opening view. Run `python3 -m http.server -d docs` to try the site locally.
+opening view. Run `python3 scripts/serve_studio.py` to serve both the showcase
+studio (`/`) and the interactive Python WASM editor (`/editor/`) locally
+(dynamically building `bp_pipeline` in memory without writing `.whl` files to
+disk).
 
 ## Overview
 

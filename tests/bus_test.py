@@ -15,6 +15,7 @@
 
 import copy
 import dataclasses
+from unittest import mock
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -23,6 +24,7 @@ from bp_pipeline import codec
 from bp_pipeline import pipeline
 from bp_pipeline import rectangle as rectangle_lib
 from bp_pipeline.crease_pattern import crease
+from bp_pipeline.crease_pattern import crease_pattern as cp_lib
 from bp_pipeline.crease_pattern import point
 from bp_pipeline.crease_pattern import visualize as cp_visualize
 from bp_pipeline.crease_pattern.parser import svg as svg_parser
@@ -30,7 +32,11 @@ from bp_pipeline.packing import config as packing_config_lib
 from bp_pipeline.packing import types as packing_types
 from bp_pipeline.packing import utils_packing_svg
 from bp_pipeline.shaping import bus_adapter
+from bp_pipeline.shaping import geometric_fold_3d_heuristics
+from bp_pipeline.shaping import shaping_elements
 from bp_pipeline.solving import hinges as hinge_utils
+from bp_pipeline.solving import partition as partition_lib
+from bp_pipeline.stick_figures import visualize as sf_visualize
 from bp_pipeline.stick_figures.examples import example_trees
 import matplotlib.pyplot as plt
 
@@ -456,6 +462,144 @@ class BusTest(parameterized.TestCase):
             ),
         ),
     )
+
+  def test_lazy_visualization_entrypoints(self):
+    sf = copy.deepcopy(example_trees.get_example_by_name('cat'))
+    design = bus.DesignTree.from_stick_figure(sf)
+    pack_cfg = pipeline.PackingTaskConfig(
+        max_number_of_cps=1,
+        max_cps_per_grid_size=1,
+        max_retries=5,
+        sweep_timeout_seconds=30,
+        packing_config=packing_config_lib.PackingConfig(
+            use_level_shifter=False,
+            enforce_proximity_constraints=False,
+        ),
+    )
+    pack_res = pipeline.pack_crease_pattern(design, config=pack_cfg)
+    pack_out = pack_res.packing_outputs[0]
+    grid_size = pack_out.packing_cp.grid_size
+    packed = bus.PackedCreasePattern.from_packing_output(
+        pack_out, design=design
+    )
+
+    parts = partition_lib.partition_hinges_and_ridges(
+        hinges=[
+            c for c in packed.creases.creases if c.fold == crease.Fold.HINGE
+        ],
+        ridges=[
+            c
+            for c in packed.creases.creases
+            if c.fold
+            in (crease.Fold.MOUNTAIN, crease.Fold.VALLEY, crease.Fold.TRIANGLE)
+        ],
+        borders=[
+            c for c in packed.creases.creases if c.fold == crease.Fold.BORDER
+        ],
+        vertices=packed.creases.vertices,
+    )
+    self.assertNotEmpty(parts)
+    fig_p, ax_p = parts[0].draw_as_cp()
+    self.assertIsNotNone(ax_p)
+    plt.close(fig_p)
+
+    invalid_cp = cp_lib.CreasePattern(
+        [
+            crease.Crease(
+                point.Point(x=0.0, y=0.0),
+                point.Point(x=1.0, y=0.0),
+                fold=crease.Fold.BORDER,
+            ),
+            crease.Crease(
+                point.Point(x=1.0, y=0.0),
+                point.Point(x=1.0, y=1.0),
+                fold=crease.Fold.BORDER,
+            ),
+            crease.Crease(
+                point.Point(x=1.0, y=1.0),
+                point.Point(x=0.0, y=1.0),
+                fold=crease.Fold.BORDER,
+            ),
+            crease.Crease(
+                point.Point(x=0.0, y=1.0),
+                point.Point(x=0.0, y=0.0),
+                fold=crease.Fold.BORDER,
+            ),
+            crease.Crease(
+                point.Point(x=0.0, y=0.5),
+                point.Point(x=0.5, y=0.5),
+                fold=crease.Fold.MOUNTAIN,
+            ),
+            crease.Crease(
+                point.Point(x=0.5, y=0.5),
+                point.Point(x=1.0, y=0.5),
+                fold=crease.Fold.MOUNTAIN,
+            ),
+        ],
+        light_mode=False,
+        merge_trivial=False,
+    )
+    fig_inv, ax_inv = cp_visualize.draw_cp(
+        invalid_cp,
+        show_vertices=True,
+        show_only_not_flat_foldable_vertices=False,
+        show_invalid=True,
+    )
+    self.assertNotEmpty(ax_inv.patches)
+    plt.close(fig_inv)
+
+    solver_cfg = hinge_utils.SolverConfig(
+        max_steps=1500, max_time_limit=30.0, max_number_of_cps=1
+    )
+    solver = solver_cfg.make_from_cp(
+        pack_out.packing_cp,
+        grid_size=grid_size,
+        packing_information=pack_out,
+    )
+    sol_res = solver.solve()[0]
+    solved_cp = sol_res.crease_pattern
+    png_bytes = cp_visualize.render_highlighted_cps_to_png_bytes(
+        [solved_cp], [pack_out]
+    )
+    self.assertTrue(png_bytes.startswith(b'\x89PNG'))
+
+    s_flaps, s_rivers = (
+        shaping_elements.convert_packing_elements_to_shaping_elements(
+            packing_rectangles=pack_out.flap_rectangles,
+            packing_rivers=pack_out.packing_rivers,
+            packing_grid_size=grid_size,
+            solving_grid_size=solved_cp.grid_size,
+            base_cp=solved_cp,
+        )
+    )
+    fig_se, ax_se = shaping_elements.visualize_shaping_elements(
+        s_flaps, s_rivers, grid_size=solved_cp.grid_size
+    )
+    self.assertIsNotNone(ax_se)
+    plt.close(fig_se)
+
+    wrapper = (
+        geometric_fold_3d_heuristics.shape_cp_with_3d_geometric_folding_heuristics_pipeline_wrapper
+    )
+    shaped_cp = wrapper(
+        base_cp=solved_cp,
+        stick_figure=design.merged,
+        packing_output=pack_out,
+        solving_output=sol_res,
+        solving_grid_size=solved_cp.grid_size,
+        central_crease_removed=False,
+        shape_with_unmerged_tree=False,
+        visualize=True,
+        shaping_flaps=s_flaps,
+        shaping_rivers=s_rivers,
+    )
+    self.assertGreaterEqual(len(shaped_cp.creases), len(solved_cp.creases))
+
+    with mock.patch.dict(
+        'sys.modules', {'plotly': None, 'plotly.graph_objects': None}
+    ):
+      with self.assertRaisesRegex(ImportError, 'plotly is required'):
+        sf_visualize.visualize_stick_figure_3d(sf)
 
 
 if __name__ == '__main__':

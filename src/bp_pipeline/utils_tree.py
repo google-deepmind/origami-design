@@ -15,6 +15,8 @@
 
 """Utility functions for working with trees, constraints, and shared helpers."""
 
+from __future__ import annotations
+
 import dataclasses
 import typing
 from typing import Any
@@ -72,7 +74,7 @@ class FoldGraphData:
   edges_vertices: list[types.Edge]
 
   @classmethod
-  def from_dict(cls, fold_data: types.FoldGraphDataDict) -> FoldGraphData:
+  def from_dict(cls, fold_data: types.FoldGraphDataDict) -> 'FoldGraphData':
     """Factory method to create an instance from a raw FOLD dictionary."""
     edges_as_tuples = [
         (types.VertexIndex(u), types.VertexIndex(v))

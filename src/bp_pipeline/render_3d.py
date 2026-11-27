@@ -15,22 +15,23 @@
 
 """Pure-Python 3D hinge-rotation mesh folder and Matplotlib shaded renderer."""
 
+from __future__ import annotations
+
 import collections
 from collections.abc import Mapping, Sequence
 import dataclasses
 import math
 import pathlib
+import typing
 from typing import Any, Literal
-
-from matplotlib import axes
-from matplotlib import collections as mpl_collections
-from matplotlib import patches
-import matplotlib.pyplot as plt
 
 from . import bus
 from . import folder_3d as fold_3d
 from .crease_pattern import crease as crease_lib
 from .crease_pattern import crease_pattern as cp_lib
+
+if typing.TYPE_CHECKING:
+  from matplotlib import axes  # pylint: disable=g-import-not-at-top,g-bad-import-order
 
 _DEFAULT_PAPER_RGB = (0.85, 0.745, 0.596)
 
@@ -897,6 +898,9 @@ def draw_folded_mesh_on_ax(
     color_top: Sequence[int] | None = None,
 ) -> None:
   """Draws a Lambertian-shaded 3D folded origami mesh view onto `ax`."""
+  from matplotlib import collections as mpl_collections  # pylint: disable=g-import-not-at-top
+  from matplotlib import patches  # pylint: disable=g-import-not-at-top
+
   ax.set_facecolor('#f8fafc')
   ax.set_aspect('equal', adjustable='box')
   ax.set_title(title, fontsize=11, fontweight='bold')
@@ -1065,6 +1069,8 @@ def render_shaped_3d_turnaround_png(
     dpi: int = 180,
 ) -> pathlib.Path:
   """Renders a 4-view shaded 3D turnaround PNG (`Iso`, `Side`, `Front`, `Top`)."""
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
+
   target_path = pathlib.Path(out_path)
   target_path.parent.mkdir(parents=True, exist_ok=True)
   fig, axs = plt.subplots(1, 4, figsize=(20, 5.2))

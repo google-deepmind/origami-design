@@ -20,7 +20,6 @@ import dataclasses
 from typing import Protocol
 
 import numpy as np
-from scipy import ndimage
 
 from . import river as river_lib
 from . import types
@@ -300,6 +299,43 @@ subproblem_perimeter_score = PerimeterScore(
 )
 
 
+def _chessboard_distance_transform(mask: np.ndarray) -> np.ndarray:
+  """Exact chessboard (L_inf) distance to nearest False cell, matching SciPy."""
+  rows, cols = mask.shape
+  inf = rows + cols + 1
+  dist = np.where(mask, inf, 0).astype(np.int32)
+  if not np.any(mask):
+    return dist
+  if np.all(mask):
+    return np.full((rows, cols), -1, dtype=np.int32)
+
+  # Vectorized row-by-row 2-pass Rosenfeld-Pfaltz Chamfer DP (exact for L_inf).
+  for r in range(rows):
+    if r > 0:
+      prev = dist[r - 1]
+      best_up = prev.copy()
+      best_up[1:] = np.minimum(best_up[1:], prev[:-1])
+      best_up[:-1] = np.minimum(best_up[:-1], prev[1:])
+      dist[r] = np.minimum(dist[r], best_up + 1)
+    row = dist[r]
+    for c in range(1, cols):
+      if row[c - 1] + 1 < row[c]:
+        row[c] = row[c - 1] + 1
+
+  for r in range(rows - 1, -1, -1):
+    if r + 1 < rows:
+      nxt = dist[r + 1]
+      best_dn = nxt.copy()
+      best_dn[1:] = np.minimum(best_dn[1:], nxt[:-1])
+      best_dn[:-1] = np.minimum(best_dn[:-1], nxt[1:])
+      dist[r] = np.minimum(dist[r], best_dn + 1)
+    row = dist[r]
+    for c in range(cols - 2, -1, -1):
+      if row[c + 1] + 1 < row[c]:
+        row[c] = row[c + 1] + 1
+  return dist
+
+
 def _largest_possible_flap(occupancy_grid: np.ndarray) -> int:
   """Finds the side length of the largest square that can be placed on the grid."""
   if occupancy_grid.size == 0:
@@ -316,9 +352,7 @@ def _largest_possible_flap(occupancy_grid: np.ndarray) -> int:
       inverted_mask, pad_width=pad_width, mode='constant', constant_values=True
   )
 
-  dist_grid_cells = ndimage.distance_transform_cdt(
-      padded_inverted, metric='chessboard'
-  )
+  dist_grid_cells = _chessboard_distance_transform(padded_inverted)
 
   dist_centers = dist_grid_cells[
       pad_width : pad_width + rows, pad_width : pad_width + cols

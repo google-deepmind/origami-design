@@ -15,13 +15,13 @@
 
 """Utility functions for geometric simple fold 3D heuristics."""
 
+from __future__ import annotations
+
 import itertools
 import logging
 import math
 import typing
 
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import art3d
 import numpy as np
 
 from ..crease_pattern import crease as crease_utils
@@ -32,6 +32,9 @@ from . import geometric_simple_fold
 from . import geometric_utils
 from . import shaping_elements
 from . import shaping_utils
+
+if typing.TYPE_CHECKING:
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top,g-bad-import-order
 
 INSCRIBE_FRACTION = 0.1
 
@@ -202,6 +205,9 @@ def visualize_cut_line_on_folded_cp(
     highlight_flap: shaping_elements.ShapingElement | None = None,
 ) -> plt.Figure:
   """Visualizes the cut line super-imposed on the folded crease pattern in 3D."""
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
+  from mpl_toolkits.mplot3d import art3d  # pylint: disable=g-import-not-at-top
+
   graph_data = geometric_simple_fold.prepare_graph_data(crease_pattern)
   folded_vertices, _ = folded_state.compute_folded_state(
       graph_data['vertices_coords'],

@@ -15,12 +15,12 @@
 
 """Visualize stick figures."""
 
+from __future__ import annotations
+
 import math
 import typing
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, TYPE_CHECKING, TypeAlias
 
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
 import numpy as np
 
 from . import angle_utils
@@ -28,10 +28,8 @@ from . import stick as stick_lib
 from . import stick_figure
 from . import traversal as tr
 
-try:
-  import plotly.graph_objects as go  # pylint: disable=g-import-not-at-top
-except ImportError:
-  go = None
+if TYPE_CHECKING:
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top,g-bad-import-order
 
 ViewPoint: TypeAlias = Literal['top', 'side', 'front', 'isometric']
 AllViewPoints = typing.get_args(ViewPoint)
@@ -132,6 +130,7 @@ def visualize_stick_from_all_views(
     **kwargs,
 ) -> plt.Figure:
   """Visualize a stick figure from all canonical view points."""
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
   viewpoints = typing.get_args(ViewPoint)
   figsize = (figsize * len(viewpoints), figsize)  # pyrefly: ignore[bad-assignment]
   fig, axes = plt.subplots(1, len(viewpoints), figsize=figsize)
@@ -155,6 +154,8 @@ def visualize_stick_figure(
     use_rectangles: bool = False,
 ) -> tuple[plt.Figure, plt.Axes]:
   """Visualize a stick figure."""
+  import matplotlib.patches as mpatches  # pylint: disable=g-import-not-at-top
+  import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
   if ax is None:
     fig, ax = plt.subplots(figsize=figsize)
     fig.patch.set_facecolor('white')
@@ -298,8 +299,12 @@ def visualize_stick_figure_3d(
     show_labels: bool = True,
 ) -> Any:
   """Visualize a stick figure in 3D using Plotly."""
-  if go is None:
-    raise ImportError('plotly is required for 3D stick figure visualization.')
+  try:
+    import plotly.graph_objects as go  # pylint: disable=g-import-not-at-top
+  except ImportError as exc:
+    raise ImportError(
+        'plotly is required for 3D stick figure visualization.'
+    ) from exc
   root_stick = tree[tree.root]
   joint_locations = {root_stick.start: (0, 0, 0)}
   for stick in tr.breadth_first_traversal(tree):
