@@ -24,8 +24,8 @@
  */
 
 import {creasePatternSvg, drawCreasePattern, drawPacking, drawStickFigure} from './diagram.js';
-import {parseFold, regionTips, strainPercent} from './fold.js';
-import {DEFAULT_BASE_COMPLETE_T, DEFAULT_SHAPING_START_T, buildFoldingSchedule, unwarpFoldingTime, warpFoldingTime} from './schedule.js';
+import {hydrateSchedule, parseFold, regionTips, strainPercent} from './fold.js';
+import {DEFAULT_BASE_COMPLETE_T, DEFAULT_SHAPING_START_T, buildFoldingSchedule, unwarpFoldingTime, unwarpScheduleProgress, warpFoldingTime, warpScheduleProgress} from './schedule.js';
 import {Stage} from './stage.js';
 import {VIDEO_PRESETS, pickSupportedVideoFormat, recordFoldingVideo} from './video.js';
 
@@ -108,6 +108,12 @@ const shown = {
  */
 let requested = null;
 
+/** @type {?Worker} Background worker solving Act-I XPBD for unscheduled models. */
+let xpbdWorker = null;
+
+/** Monotonic request ID cancelling stale background XPBD worker solves. */
+let xpbdJobId = 0;
+
 /**
  * Creates an HTML element with properties and children.
  *
@@ -162,16 +168,20 @@ function shortStageTitle(label) {
 function renderScheduleUI(schedule) {
   const track = byId('phase-track');
   const segments = schedule.phases.map((ph, idx) => {
+    const pStart = unwarpScheduleProgress(schedule, ph.tStart);
+    const pEnd = unwarpScheduleProgress(schedule, ph.tEnd);
     const seg = html('div', {className: 'phase-seg'});
     seg.dataset.act = ph.act ?? (ph.stageGroup === 'collapse' ? 'I' : 'III');
     seg.dataset.phase = idx;
-    seg.style.left = `${100 * ph.tStart}%`;
-    seg.style.width = `${Math.max(0.8, 100 * (ph.tEnd - ph.tStart))}%`;
+    seg.style.left = `${100 * pStart}%`;
+    seg.style.width = `${Math.max(0.8, 100 * (pEnd - pStart))}%`;
     return seg;
   });
+  const baseSliderP = unwarpScheduleProgress(
+      schedule, schedule.baseCompleteT ?? DEFAULT_BASE_COMPLETE_T);
   if (schedule.baseCompleteT < 0.99) {
     const baseTick = html('div', {className: 'base-tick'});
-    baseTick.style.left = `${100 * schedule.baseCompleteT}%`;
+    baseTick.style.left = `${100 * baseSliderP}%`;
     segments.push(baseTick);
   }
   track.replaceChildren(...segments);
@@ -179,8 +189,7 @@ function renderScheduleUI(schedule) {
   const jumpBase = byId('jump-base');
   const hasBaseSplit = schedule.baseCompleteT < 0.99;
   jumpBase.hidden = !hasBaseSplit;
-  jumpBase.dataset.jump =
-      String(schedule.baseCompleteT ?? DEFAULT_BASE_COMPLETE_T);
+  jumpBase.dataset.jump = String(baseSliderP);
 
   const actCounts = new Map();
   for (const ph of schedule.phases) {
@@ -189,9 +198,9 @@ function renderScheduleUI(schedule) {
   }
   const actLabels = {
     I: 'Act I Collapse',
-    II: 'Act II Flat-Clip',
-    III: 'Act III 3D Pose',
-    IV: 'Act IV Sculpt',
+    II: 'Act II Narrow',
+    III: 'Act III Pose',
+    IV: 'Act IV Fan Out',
   };
   const pills = [...actCounts.keys()].map((act) => {
     const pill = html('span', {className: 'act-pill'}, actLabels[act] ?? `Act ${act}`);
@@ -207,8 +216,9 @@ function renderScheduleUI(schedule) {
     const act = ph.act ?? 'I';
     const badge = html('span', {className: 'act-pill'}, act);
     badge.dataset.act = act;
-    const rangeText =
-        `${Math.round(100 * ph.tStart)}–${Math.round(100 * ph.tEnd)}%`;
+    const pStart = unwarpScheduleProgress(schedule, ph.tStart);
+    const pEnd = unwarpScheduleProgress(schedule, ph.tEnd);
+    const rangeText = `${Math.round(100 * pStart)}–${Math.round(100 * pEnd)}%`;
     const row = html(
         'button',
         {
@@ -224,10 +234,54 @@ function renderScheduleUI(schedule) {
     row.addEventListener('click', () => {
       stopAnimation();
       byId('staged').checked = true;
-      setFold(0.5 * (ph.tStart + ph.tEnd));
+      setFold(unwarpScheduleProgress(schedule, 0.5 * (ph.tStart + ph.tEnd)));
     });
     return row;
   }));
+}
+
+/**
+ * Solves Act-I XPBD keyframes off the main thread for models that do not carry
+ * a precomputed `schedule.json`, hot-swapping the resulting trajectory into
+ * `shown.schedule` once ready.
+ *
+ * @param {!Object} model
+ * @param {!Object} schedule
+ */
+function startBackgroundXpbdSolve(model, schedule) {
+  if (typeof Worker === 'undefined') return;
+  if (xpbdWorker) {
+    xpbdWorker.terminate();
+    xpbdWorker = null;
+  }
+  const jobId = ++xpbdJobId;
+  try {
+    const worker = new Worker(
+        new URL('./xpbd_worker.js', import.meta.url), {type: 'module'});
+    xpbdWorker = worker;
+    worker.addEventListener('message', (event) => {
+      const {id, act1Keyframes} = event.data ?? {};
+      if (id !== xpbdJobId || shown.model !== model) return;
+      const nextSchedule = {...shown.schedule, act1Keyframes};
+      shown.schedule = nextSchedule;
+      stage.setSchedule(nextSchedule);
+      setFold(shown.fold);
+      worker.terminate();
+      if (xpbdWorker === worker) xpbdWorker = null;
+    });
+    worker.addEventListener('error', () => {
+      worker.terminate();
+      if (xpbdWorker === worker) xpbdWorker = null;
+    });
+    worker.postMessage({
+      id: jobId,
+      model,
+      rootFace: schedule.rootFace,
+      shapingHopCosts: schedule.shapingHopCosts,
+    });
+  } catch {
+    xpbdWorker = null;
+  }
 }
 
 /**
@@ -236,9 +290,16 @@ function renderScheduleUI(schedule) {
  * @param {!Object} model Parsed model from `fold.js`.
  * @param {?Object} stickFigure Parsed stick figure JSON, if known.
  * @param {!Object} entry Catalog entry, or its stand-in for a local file.
+ * @param {?Object=} precomputedSchedule Optional precomputed `schedule.json`.
  */
-function show(model, stickFigure, entry) {
-  const schedule = buildFoldingSchedule(model, stickFigure);
+function show(model, stickFigure, entry, precomputedSchedule = null) {
+  xpbdJobId++;
+  if (xpbdWorker) {
+    xpbdWorker.terminate();
+    xpbdWorker = null;
+  }
+  const hydrated = hydrateSchedule(precomputedSchedule, model);
+  const schedule = hydrated ?? buildFoldingSchedule(model, stickFigure);
   Object.assign(shown, {
     model,
     stickFigure,
@@ -262,6 +323,9 @@ function show(model, stickFigure, entry) {
   byId('staged').disabled = schedule.phases.length <= 1 && model.shaping === null;
   renderScheduleUI(schedule);
   setFold(1);
+  if (!hydrated && schedule.baseCompleteT < 0.99) {
+    startBackgroundXpbdSolve(model, schedule);
+  }
 
   byId('title').textContent = entry.title;
   byId('subtitle').textContent = entry.subtitle ?? '';
@@ -412,13 +476,16 @@ function syncActiveStageHighlight() {
   const caption = lastState?.label ?? 'Final 3D Sculpted Origami';
   byId('stage-caption').textContent = caption;
 
+  const warpedFold = byId('staged').checked ?
+      (lastState?.warpedT ?? warpScheduleProgress(schedule, fold)) :
+      fold;
   const activeIdx = lastState?.activePhaseIndex ?? -1;
   for (const seg of byId('phase-track').querySelectorAll('.phase-seg')) {
     const idx = Number(seg.dataset.phase);
     const ph = schedule.phases[idx];
     const active = idx === activeIdx ||
-        (ph && fold >= ph.tStart - 0.002 && fold <= ph.tEnd + 0.002 &&
-         fold > 0.002 && fold < 0.998);
+        (ph && warpedFold >= ph.tStart - 0.002 &&
+         warpedFold <= ph.tEnd + 0.002 && fold > 0.002 && fold < 0.998);
     seg.classList.toggle('active', Boolean(active));
   }
 
@@ -429,7 +496,7 @@ function syncActiveStageHighlight() {
     const ph = schedule.phases[idx];
     const current = idx === activeIdx ||
         (activeIdx < 0 && ph && fold > 0.002 && fold < 0.998 &&
-         fold >= ph.tStart && fold <= ph.tEnd);
+         warpedFold >= ph.tStart && warpedFold <= ph.tEnd);
     if (current) {
       row.setAttribute('aria-current', 'step');
       if (!activeRow) activeRow = row;
@@ -687,12 +754,15 @@ async function showCatalogModel(entry) {
   byId('status').textContent = `Loading ${entry.title}…`;
   requested = entry;
   try {
-    const [fold, stickFigure] = await Promise.all([
+    const [fold, stickFigure, rawSchedule] = await Promise.all([
       fetchJson(`models/${entry.slug}/shaped_3d.fold`),
       fetchJson(`models/${entry.slug}/stick_figure.json`),
+      fetch(`models/${entry.slug}/schedule.json`)
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
     ]);
     if (requested !== entry) return;
-    show(parseFold(fold), stickFigure, entry);
+    show(parseFold(fold), stickFigure, entry, rawSchedule);
   } catch (error) {
     byId('status').textContent =
         `Could not load ${entry.title}: ${error.message}`;

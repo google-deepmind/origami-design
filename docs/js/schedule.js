@@ -13,20 +13,26 @@
 // limitations under the License.
 
 /**
- * @fileoverview Multi-stage axial-first collapse and anatomical 3D shaping
- * schedules.
+ * @fileoverview Multi-stage unbroken box-pleat collapse and proximal-to-distal
+ * 3D shaping schedules.
  *
  * Partitions folding into four physical acts:
- *   - Act I (Collapse): Coupled horizontal and vertical axial creases with
- *     45-degree diagonal ridges, collapsing progressively outward from the
- *     spine to the flat box-pleated base.
- *   - Act II (Flat-Clip): Pure 180-degree narrowing/clip folds on the table.
- *   - Act III (3D Pose): Skeletal river bends, limb-root hinges, and coupled
- *     crimps ordered outward from the trunk, one bilateral region at a time.
- *   - Act IV (3D Sculpt): Volumetric feather fans, squashes, and tip details.
+ *   - Act I (Collapse): Unbroken single-sheet Signed-Dihedral + Facet-Crease
+ *     XPBD gather collapsing horizontal, vertical, and 45-degree miter creases
+ *     onto the compact box-pleated base without seam tears.
+ *   - Act II (Narrow Flap): Pure 180-degree flap-narrowing clip folds on the
+ *     studio table.
+ *   - Act III (Pose Limb): Proximal-to-distal skeletal river bends, limb-root
+ *     hinges, and coupled crimps routed over a Short-Hop Radial Dijkstra tree.
+ *   - Act IV (Fan Out): Volumetric wing, plume, hood, crest, and tip fan-out
+ *     locked to the final stage so collapsed flaps stay compressed until the
+ *     end.
  *
  * Free of DOM and three.js dependencies, so it also runs under Node.
  */
+
+import {Folder, buildShortHopDijkstra, nearestFaceToCenter} from './fold.js';
+import {buildSignedXPBDSystem, solveLiveSignedXPBD} from './xpbd.js';
 
 /** Default schedule progress `t` where Act I base collapse completes. */
 export const DEFAULT_BASE_COMPLETE_T = 0.37;
@@ -44,6 +50,8 @@ export const WARP_STAGE1_END_U = 0.335;
 export const WARP_HOLD_END_U = 0.380;
 
 const BILATERAL_SUFFIX = /(_left|_right|_l|_r|left|right)$/i;
+const FAN_OUT_TOKEN =
+    /(^|_)(wing|wings|fan|plume|tail_[lr]\d+|tail_center|hood|crest)(_|$)/i;
 
 /**
  * C2-continuous quintic ease-in-out on `[0, 1]`.
@@ -57,14 +65,18 @@ export function smootherstep(x) {
 }
 
 /**
- * Evaluates C2 phase progress with optional final hinge deceleration.
+ * Evaluates C2 phase progress with optional power warp and final deceleration.
  *
  * @param {number} x Normalized phase progress in `[0, 1]`.
  * @param {number=} easeOut Deceleration strength in `[0, 1]`.
+ * @param {number=} power Monotone power exponent (`> 0`).
  * @return {number}
  */
-export function easePhaseProgress(x, easeOut = 0) {
-  const c = Math.max(0, Math.min(1, x));
+export function easePhaseProgress(x, easeOut = 0, power = 1) {
+  let c = Math.max(0, Math.min(1, x));
+  if (power > 0 && Math.abs(power - 1) > 1e-4) {
+    c = Math.pow(c, power);
+  }
   if (easeOut <= 1e-6) return smootherstep(c);
   const blend = Math.max(0, Math.min(1, easeOut));
   const decel = 1 - Math.pow(1 - c, 1.75);
@@ -182,13 +194,51 @@ function cleanRegionTitle(region) {
 }
 
 /**
- * Builds a 4-Act multi-stage folding schedule directly from a parsed `Model`.
+ * Classifies an edge as horizontal axial, vertical axial, or 45-degree ridge.
+ *
+ * @param {!Float64Array} flat
+ * @param {!Array<number>} pair
+ * @return {string}
+ */
+function classifyEdgeAxis(flat, [u, v]) {
+  const dx = Math.abs(flat[2 * v] - flat[2 * u]);
+  const dy = Math.abs(flat[2 * v + 1] - flat[2 * u + 1]);
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  if (Math.abs(ux - uy) < 0.35 && Math.min(ux, uy) > 0.25) return 'ridge';
+  return dy <= dx ? 'horiz' : 'vert';
+}
+
+/**
+ * Avoids spurious 360-degree wraps when both base and final angles are ±180.
+ *
+ * @param {number} baseAngle
+ * @param {number} finalAngle
+ * @return {number}
+ */
+function effectiveTargetAngle(baseAngle, finalAngle) {
+  if (Math.abs(baseAngle) >= 178 && Math.abs(finalAngle) >= 178) {
+    return baseAngle;
+  }
+  return finalAngle;
+}
+
+/**
+ * Builds a 4-Act multi-stage folding schedule directly from a parsed `Model`,
+ * computing a Short-Hop Radial Dijkstra schedule for Acts II–IV and (when
+ * `options.solveXpbd` is true) solving an unbroken Signed-Dihedral XPBD gather
+ * for Act I. Interactive UI callers leave `solveXpbd` false (`< 2 ms`) and
+ * solve Act-I XPBD asynchronously in `xpbd_worker.js`.
  *
  * @param {!Object} model Parsed `Model` from `fold.js`.
  * @param {?Object=} stickFigure Optional stick figure JSON.
+ * @param {{solveXpbd: (boolean|undefined)}=} options Optional solver flags.
  * @return {!Object}
  */
-export function buildFoldingSchedule(model, stickFigure = null) {
+export function buildFoldingSchedule(
+    model, stickFigure = null, options = {}) {
+  const {solveXpbd = false} = options;
   const {
     flat,
     faces,
@@ -198,26 +248,33 @@ export function buildFoldingSchedule(model, stickFigure = null) {
     baseFoldAngles,
     regions,
     faceRegions,
-    gridSize,
   } = model;
   const numEdges = edges.length;
+  const nV = flat.length / 2;
+  const rf = nearestFaceToCenter(flat, faces);
   const hops = stickHopDistances(stickFigure);
+
   const regionMeta = regions.map((r, idx) => {
-    const minHop = Math.min(
-        ...(r.sticks ?? []).map((s) => hops.get(s) ?? 1), 1);
+    const sticks = r.sticks ?? [];
+    const rawName = sticks.at(-1) ?? '';
+    const minHop = sticks.length ?
+        Math.min(...sticks.map((s) => hops.get(s) ?? 1)) :
+        1;
     const isRiver = r.kind === 'river';
+    const isNamedFan =
+        r.kind === 'flap' && sticks.some((s) => FAN_OUT_TOKEN.test(s));
     return {
       id: idx,
       kind: r.kind,
+      rawName,
+      isNamedFan,
       hop: isRiver && minHop === 0 ? 0 : minHop,
       title: cleanRegionTitle(r),
     };
   });
 
-  // Map edges to incident regions.
   const edgeRegions = Array.from({length: numEdges}, () => new Set());
   const edgeByKey = new Map();
-  const nV = flat.length / 2;
   edges.forEach(([u, v], e) => {
     edgeByKey.set(u < v ? u * nV + v : v * nV + u, e);
   });
@@ -232,40 +289,21 @@ export function buildFoldingSchedule(model, stickFigure = null) {
     }
   });
 
-  const tBase = DEFAULT_BASE_COMPLETE_T;
-  const tShapeStart = DEFAULT_SHAPING_START_T;
   const s1Edges = [];
-  const roles = new Array(numEdges).fill('shaping');
-
   for (let e = 0; e < numEdges; e++) {
-    if (assignments[e] === 'B') {
-      roles[e] = 'border';
-      continue;
-    }
-    if (Math.abs(baseFoldAngles[e]) < 1) continue;
-    s1Edges.push(e);
-    const [u, v] = edges[e];
-    const dx = Math.abs(flat[2 * v] - flat[2 * u]);
-    const dy = Math.abs(flat[2 * v + 1] - flat[2 * u + 1]);
-    const len = Math.hypot(dx, dy) || 1;
-    const ux = dx / len;
-    const uy = dy / len;
-    if (Math.abs(ux - uy) < 0.35 && Math.min(ux, uy) > 0.25) {
-      roles[e] = 'ridge';
-    } else if (edgeRegions[e].size > 1) {
-      roles[e] = 'hinge';
-    } else {
-      roles[e] = 'axial';
+    if (assignments[e] !== 'B' && Math.abs(baseFoldAngles[e]) >= 1) {
+      s1Edges.push(e);
     }
   }
+  const hasS2 = foldAngles.some(
+      (a, e) => Math.abs(effectiveTargetAngle(baseFoldAngles[e], a) -
+                         baseFoldAngles[e]) >= 1);
 
-  // If the file has no separate base/shaping split, build a single-act schedule.
-  const hasS2 = foldAngles.some((a, e) => Math.abs(a - baseFoldAngles[e]) >= 1);
   if (s1Edges.length === 0 || !hasS2) {
     const active = [];
     const deltas = [];
     for (let e = 0; e < numEdges; e++) {
-      if (Math.abs(foldAngles[e]) >= 1) {
+      if (assignments[e] !== 'B' && Math.abs(foldAngles[e]) >= 1) {
         active.push(e);
         deltas.push(foldAngles[e]);
       }
@@ -274,6 +312,7 @@ export function buildFoldingSchedule(model, stickFigure = null) {
       baseCompleteT: 1.0,
       shapingStartT: 1.0,
       standupStartT: 0.0,
+      rootFace: rf,
       phases: [{
         id: 'fold_all',
         act: 'I',
@@ -282,177 +321,72 @@ export function buildFoldingSchedule(model, stickFigure = null) {
         tStart: 0.0,
         tEnd: 1.0,
         easeOut: 0.6,
+        power: 1.0,
         edgeIndices: active,
         deltas: Float64Array.from(deltas),
       }],
     };
   }
 
-  const phases = [];
-  const remaining = Float64Array.from(baseFoldAngles);
+  const tBase = DEFAULT_BASE_COMPLETE_T;
+  const tShapeStart = DEFAULT_SHAPING_START_T;
 
-  // Couple collinear & opposite-sign M+V axial creases and bucket by region.
-  const gridUnit = 1 / Math.max(gridSize || 28, 12);
-  const uf = s1Edges.map((_, i) => i);
-  const find = (x) => {
-    while (uf[x] !== x) {
-      uf[x] = uf[uf[x]];
-      x = uf[x];
-    }
-    return x;
-  };
-  const union = (a, b) => {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) uf[rb] = ra;
-  };
-
-  const hAxials = [];
-  const vAxials = [];
-  s1Edges.forEach((e, k) => {
-    if (roles[e] === 'ridge') return;
+  // Act I semantic wave phases (coupled outer/core horizontal, vertical, and
+  // 45-degree miter ridges).
+  const hOut = [];
+  const hIn = [];
+  const vOut = [];
+  const vIn = [];
+  const rAll = [];
+  for (const e of s1Edges) {
     const [u, v] = edges[e];
-    const x1 = flat[2 * u];
-    const y1 = flat[2 * u + 1];
-    const x2 = flat[2 * v];
-    const y2 = flat[2 * v + 1];
-    const sgn = remaining[e] >= 0 ? 1 : -1;
-    if (Math.abs(y2 - y1) <= 1e-3 && Math.abs(x2 - x1) > 1e-4) {
-      hAxials.push([k, 0.5 * (y1 + y2), Math.min(x1, x2), Math.max(x1, x2), sgn]);
-    } else if (Math.abs(x2 - x1) <= 1e-3 && Math.abs(y2 - y1) > 1e-4) {
-      vAxials.push([k, 0.5 * (x1 + x2), Math.min(y1, y2), Math.max(y1, y2), sgn]);
-    }
-  });
-
-  const coupleAxials = (list) => {
-    for (let i = 0; i < list.length; i++) {
-      const [ki, ci, loI, hiI, si] = list[i];
-      for (let j = i + 1; j < list.length; j++) {
-        const [kj, cj, loJ, hiJ, sj] = list[j];
-        if (si === sj && Math.abs(ci - cj) <= 0.15 * gridUnit &&
-            Math.min(hiI, hiJ) - Math.max(loI, loJ) >= -0.25 * gridUnit) {
-          union(ki, kj);
-        }
-      }
-    }
-    const paired = new Set();
-    for (let i = 0; i < list.length; i++) {
-      const [ki, ci, loI, hiI, si] = list[i];
-      if (paired.has(ki)) continue;
-      let bestJ = -1;
-      let bestDc = 2.15 * gridUnit;
-      for (let j = 0; j < list.length; j++) {
-        const [, cj, loJ, hiJ, sj] = list[j];
-        if (si * sj >= 0) continue;
-        const dc = Math.abs(ci - cj);
-        if (dc >= 0.4 * gridUnit && dc < bestDc) {
-          const ov = Math.min(hiI, hiJ) - Math.max(loI, loJ);
-          if (ov >= 0.35 * Math.min(hiI - loI, hiJ - loJ)) {
-            bestDc = dc;
-            bestJ = j;
-          }
-        }
-      }
-      if (bestJ >= 0) {
-        const kj = list[bestJ][0];
-        union(ki, kj);
-        paired.add(ki);
-        paired.add(kj);
-      }
-    }
-  };
-  coupleAxials(hAxials);
-  coupleAxials(vAxials);
-
-  const packets = new Map();
-  s1Edges.forEach((e, k) => {
-    const r = find(k);
-    if (!packets.has(r)) packets.set(r, []);
-    packets.get(r).push(e);
-  });
-
-  const spineEdges = [];
-  const flapGroups = new Map();
-  for (const pkt of packets.values()) {
-    let best = null;
-    for (const e of pkt) {
-      for (const rid of edgeRegions[e]) {
-        const rm = regionMeta[rid];
-        if (!rm) continue;
-        const isRiv = rm.hop === 0 || rm.kind === 'river';
-        const cand = {hop: isRiv ? 0 : rm.hop, isRiv, title: rm.title};
-        if (!best || cand.hop < best.hop ||
-            (cand.hop === best.hop && cand.isRiv && !best.isRiv)) {
-          best = cand;
-        }
-      }
-    }
-    if (!best || best.isRiv) {
-      spineEdges.push(...pkt);
-    } else {
-      const key = `${best.hop}|${best.title}`;
-      if (!flapGroups.has(key)) {
-        flapGroups.set(key, {hop: best.hop, title: best.title, edges: []});
-      }
-      flapGroups.get(key).edges.push(...pkt);
-    }
+    const rad = Math.hypot(
+        0.5 * (flat[2 * u] + flat[2 * v]) - 0.5,
+        0.5 * (flat[2 * u + 1] + flat[2 * v + 1]) - 0.5) / 0.5;
+    const outer = rad >= 0.48;
+    const ax = classifyEdgeAxis(flat, edges[e]);
+    if (ax === 'horiz') (outer ? hOut : hIn).push(e);
+    else if (ax === 'vert') (outer ? vOut : vIn).push(e);
+    else rAll.push(e);
   }
+  const act1Specs = [
+    ['Outer Horizontal Pleats', hOut, 0.00, 0.96],
+    ['Outer Vertical Pleats', vOut, 0.02, 0.96],
+    ['Core Horizontal Pleats', hIn, 0.05, 0.98],
+    ['Core Vertical Pleats', vIn, 0.07, 0.98],
+    ['45° Miter Ridges & Base Lock', rAll, 0.04, 1.00],
+  ].filter(([, es]) => es.length > 0);
 
-  const orderedS1 = [...flapGroups.values()].sort(
-      (a, b) => a.hop - b.hop || b.edges.length - a.edges.length ||
-          a.title.localeCompare(b.title));
-  const buckets = [];
-  if (spineEdges.length > 0) {
-    buckets.push({hop: 0, names: ['Spine & Rivers'], edges: spineEdges});
-  }
-  for (const g of orderedS1) {
-    const last = buckets.at(-1);
-    if (last && last.hop > 0 &&
-        ((last.hop === g.hop && (last.edges.length < 18 || g.edges.length < 18)) ||
-         buckets.length >= 7)) {
-      if (!last.names.includes(g.title)) last.names.push(g.title);
-      last.edges.push(...g.edges);
-    } else {
-      buckets.push({hop: g.hop, names: [g.title], edges: [...g.edges]});
-    }
-  }
+  const phases = act1Specs.map(([title, es, u0, u1], idx) => ({
+    id: `s1_w${idx}`,
+    act: 'I',
+    stageGroup: 'collapse',
+    label: `Act I.${idx + 1} · Gather ${title}`,
+    tStart: +(u0 * tBase).toFixed(4),
+    tEnd: +(idx === act1Specs.length - 1 ? tBase : u1 * tBase).toFixed(4),
+    easeOut: 0.35,
+    power: 1.0,
+    edgeIndices: es,
+    deltas: Float64Array.from(es, (e) => baseFoldAngles[e]),
+  }));
 
-  // Keep axial creases and 45-degree ridges coupled inside each bucket and
-  // overlap buckets across Act I so spanning-tree hinge folding collapses
-  // degree-4 junctions synchronously without rolling the sheet.
-  const tActiveEnd = tBase * 0.985;
-  buckets.forEach((b, idx) => {
-    const frac = buckets.length > 1 ? idx / (buckets.length - 1) : 0;
-    const t0 = 0.12 * frac * tActiveEnd;
-    const t1 = (0.88 + 0.12 * frac) * tActiveEnd;
-    const ease = idx === buckets.length - 1 ? 0.85 : 0.45;
-    const desc = b.names.slice(0, 2).join(', ') +
-        (b.names.length > 2 ? ` +${b.names.length - 2}` : '');
-    const beat = idx + 1;
-    const title = b.hop === 0 ?
-        `Act I.${beat} · Collapse ${desc}` :
-        `Act I.${beat} · Collapse Flaps: ${desc}`;
-    phases.push({
-      id: `s1_b${idx}`,
-      act: 'I',
-      stageGroup: 'collapse',
-      label: title,
-      tStart: +t0.toFixed(4),
-      tEnd: +t1.toFixed(4),
-      easeOut: ease,
-      edgeIndices: b.edges,
-      deltas: Float64Array.from(b.edges, (e) => remaining[e]),
-    });
-  });
-
-  // Classify Stage-2 shaping edges into Act II (flat 180 clip), Act III (pose),
-  // and Act IV (volumetric sculpt).
+  // Stage-2 Short-Hop Radial Dijkstra step costs avoiding unfold/flip creases.
+  const effFinal = new Float64Array(numEdges);
+  const shapingHopCosts = new Float64Array(numEdges);
   const s2Active = [];
   const nonFlatVerts = new Set();
-  const flippedVerts = new Set();
   const vAdj = new Map();
+
   for (let e = 0; e < numEdges; e++) {
-    const d = foldAngles[e] - baseFoldAngles[e];
+    const b = baseFoldAngles[e];
+    const f = effectiveTargetAngle(b, foldAngles[e]);
+    effFinal[e] = f;
+    const d = f - b;
+    const unfolds =
+        Math.abs(b) >= 10 && (Math.abs(f) < Math.abs(b) - 10 || b * f < -10);
+    shapingHopCosts[e] =
+        (Math.abs(b) < 1 ? 1.0 : 1.15) + (unfolds ? 32.0 : 0) +
+        Math.abs(d) / 90.0;
     if (Math.abs(d) < 1) continue;
     s2Active.push(e);
     const [u, v] = edges[e];
@@ -460,15 +394,9 @@ export function buildFoldingSchedule(model, stickFigure = null) {
     if (!vAdj.has(v)) vAdj.set(v, []);
     vAdj.get(u).push([v, e]);
     vAdj.get(v).push([u, e]);
-    const flipped = Math.abs(baseFoldAngles[e]) >= 1 &&
-        (baseFoldAngles[e] * foldAngles[e] < -1 || Math.abs(d) > 5);
-    const absSh = Math.abs(foldAngles[e]);
-    if (flipped) {
-      flippedVerts.add(u);
-      flippedVerts.add(v);
-      nonFlatVerts.add(u);
-      nonFlatVerts.add(v);
-    } else if (absSh > 4 && absSh < 176) {
+    const flipped = Math.abs(b) >= 1 && (b * f < -1 || Math.abs(d) > 5);
+    const absSh = Math.abs(f);
+    if (flipped || (absSh > 4 && absSh < 176)) {
       nonFlatVerts.add(u);
       nonFlatVerts.add(v);
     }
@@ -487,58 +415,84 @@ export function buildFoldingSchedule(model, stickFigure = null) {
     }
   }
 
-  const tier1 = [];
-  const tier2 = [];
-  const tier3 = [];
-  for (const e of s2Active) {
-    if (!coupled3d.has(e)) {
-      tier1.push(e);
-      continue;
+  const hasAnyNamedSticks = regionMeta.some((rm) => rm.rawName.length > 0);
+  const regPosPart = new Int32Array(regionMeta.length);
+  const regNegPart = new Int32Array(regionMeta.length);
+  if (!hasAnyNamedSticks) {
+    for (const e of s2Active) {
+      const b = baseFoldAngles[e];
+      const f = effFinal[e];
+      if (Math.abs(b) < 5 && Math.abs(f) >= 25 && Math.abs(f) <= 168) {
+        for (const r of edgeRegions[e]) {
+          if (regionMeta[r]?.kind === 'flap') {
+            if (f > 0) regPosPart[r]++;
+            else regNegPart[r]++;
+          }
+        }
+      }
     }
-    const [u, v] = edges[e];
-    const rids = [...edgeRegions[e]];
-    const touchesRiver = rids.some((r) => regionMeta[r]?.kind === 'river');
-    if (flippedVerts.has(u) || flippedVerts.has(v) || touchesRiver ||
-        rids.length >= 2) {
-      tier2.push(e);
+  }
+  const isFanRegion = (r) => {
+    const rm = regionMeta[r];
+    if (!rm || rm.kind !== 'flap') return false;
+    if (rm.isNamedFan) return true;
+    if (hasAnyNamedSticks) return false;
+    return regPosPart[r] >= 4 && regNegPart[r] >= 4;
+  };
+
+  const tier1 = [];
+  const tierPose = [];
+  const tierFan = [];
+  for (const e of s2Active) {
+    if ([...edgeRegions[e]].some(isFanRegion)) {
+      tierFan.push(e);
+    } else if (!coupled3d.has(e)) {
+      tier1.push(e);
     } else {
-      tier3.push(e);
+      tierPose.push(e);
     }
   }
 
-  const edgeRegionName = (e) => {
+  const edgeRegionName = (e, preferFan = false) => {
+    if (preferFan) {
+      for (const r of edgeRegions[e]) {
+        if (isFanRegion(r)) return regionMeta[r].title;
+      }
+    }
     for (const r of edgeRegions[e]) {
-      if (regionMeta[r] && regionMeta[r].kind !== 'river') {
+      if (regionMeta[r] && regionMeta[r].kind === 'flap') {
         return regionMeta[r].title;
       }
     }
     return 'Spine & Trunk';
   };
   const edgeHop = (e) => {
-    let h = 1;
+    let h = Infinity;
     for (const r of edgeRegions[e]) {
-      if (regionMeta[r]) h = Math.min(h, regionMeta[r].hop);
+      if (regionMeta[r] && regionMeta[r].kind === 'flap') {
+        h = Math.min(h, regionMeta[r].hop);
+      }
     }
-    return h;
+    return Number.isFinite(h) ? h : 0;
   };
 
-  const buildActWaves = (list, tA, tB, actRoman, verb, maxWaves, isFinal) => {
-    if (list.length === 0) return;
+  const buildGroupedWaves = (list, maxWaves, preferFan) => {
+    if (list.length === 0) return [];
     const byReg = new Map();
     for (const e of list) {
-      const rn = edgeRegionName(e);
+      const rn = edgeRegionName(e, preferFan);
       if (!byReg.has(rn)) byReg.set(rn, []);
       byReg.get(rn).push(e);
     }
-    let waves = [...byReg.entries()]
-                    .map(([name, es]) => ({
-                           names: [name],
-                           hop: Math.min(...es.map(edgeHop)),
-                           edges: es,
-                         }))
-                    .sort(
-                        (a, b) => a.hop - b.hop ||
-                            a.names[0].localeCompare(b.names[0]));
+    const waves = [...byReg.entries()]
+                      .map(([name, es]) => ({
+                             names: [name],
+                             hop: Math.min(...es.map(edgeHop)),
+                             edges: es,
+                           }))
+                      .sort(
+                          (a, b) => a.hop - b.hop ||
+                              a.names[0].localeCompare(b.names[0]));
     while (waves.length > maxWaves) {
       let best = 0;
       for (let i = 1; i < waves.length - 1; i++) {
@@ -548,22 +502,29 @@ export function buildFoldingSchedule(model, stickFigure = null) {
         }
       }
       waves.splice(best, 2, {
-        names: [...waves[best].names, ...waves[best + 1].names],
+        names: [...new Set([...waves[best].names, ...waves[best + 1].names])],
         hop: Math.min(waves[best].hop, waves[best + 1].hop),
         edges: [...waves[best].edges, ...waves[best + 1].edges],
       });
     }
+    return waves;
+  };
+
+  const emitWavePhases = (waves, tA, tB, actRoman, verb, overlapFrac, isFinal) => {
+    if (waves.length === 0 || tB <= tA + 1e-5) return;
     const weights = waves.map((w) => Math.sqrt(Math.max(2, w.edges.length)));
     if (isFinal && weights.length >= 2) {
-      weights[weights.length - 1] *= 1.35;
-      weights[weights.length - 2] *= 1.18;
+      weights[weights.length - 1] *= 1.3;
+      weights[weights.length - 2] *= 1.15;
     }
     const wSum = weights.reduce((a, b) => a + b, 0) || 1;
     let cursor = tA;
     waves.forEach((w, idx) => {
       const seg = (tB - tA) * (weights[idx] / wSum);
-      const wt0 = idx > 0 ? Math.max(tA, cursor - 0.03 * seg) : tA;
-      const wt1 = idx === waves.length - 1 ? tB : Math.min(tB, cursor + seg * 1.02);
+      const wt0 = idx > 0 ? Math.max(tA, cursor - overlapFrac * seg) : tA;
+      const wt1 = idx === waves.length - 1 ?
+          tB :
+          Math.min(tB, cursor + seg * (1 + 0.5 * overlapFrac));
       cursor += seg;
       const desc = w.names.slice(0, 2).join(' & ') +
           (w.names.length > 2 ? ` +${w.names.length - 2}` : '');
@@ -574,74 +535,177 @@ export function buildFoldingSchedule(model, stickFigure = null) {
         label: `Act ${actRoman}.${idx + 1} · ${verb}: ${desc}`,
         tStart: +wt0.toFixed(4),
         tEnd: +wt1.toFixed(4),
-        easeOut: isFinal && idx === waves.length - 1 ? 0.9 : 0.25,
+        easeOut: isFinal && idx === waves.length - 1 ? 0.9 : 0.28,
+        power: 1.0,
         edgeIndices: w.edges,
         deltas: Float64Array.from(
-            w.edges, (e) => foldAngles[e] - baseFoldAngles[e]),
+            w.edges, (e) => effFinal[e] - baseFoldAngles[e]),
       });
     });
   };
 
-  const tFinish = 0.988;
+  const t1Waves = buildGroupedWaves(tier1, 6, false);
+  const poseWaves = buildGroupedWaves(tierPose, 8, false);
+  const fanWaves = buildGroupedWaves(tierFan, 6, true);
+
+  const tFinish = 0.990;
   let curT = tShapeStart;
   let standupT = tShapeStart;
-  const totS2 = Math.max(1, tier1.length + tier2.length + tier3.length);
-  if (tier1.length > 0 && (tier2.length > 0 || tier3.length > 0)) {
-    const frac1 = Math.max(0.15, Math.min(0.26, tier1.length / totS2 + 0.06));
-    const tAct2End = curT + (tFinish - curT) * frac1;
-    buildActWaves(tier1, curT, tAct2End - 0.008, 'II', 'Flat-Clip', 6, false);
+  if (t1Waves.length > 0 && (poseWaves.length > 0 || fanWaves.length > 0)) {
+    const tAct2End = curT + (tFinish - tShapeStart) * 0.18;
+    emitWavePhases(t1Waves, curT, tAct2End - 0.006, 'II', 'Narrow Flap', 0.03, false);
     standupT = tAct2End;
     curT = tAct2End;
-  } else if (tier1.length > 0) {
-    buildActWaves(tier1, curT, tFinish, 'II', 'Flat-Clip', 8, true);
+  } else if (t1Waves.length > 0) {
+    emitWavePhases(t1Waves, curT, tFinish, 'II', 'Narrow Flap', 0.03, true);
     standupT = 1.0;
     curT = tFinish;
   }
 
-  if (tier2.length > 0 && tier3.length > 0) {
-    const frac2 = Math.max(
-        0.40,
-        Math.min(0.56, tier2.length / Math.max(1, tier2.length + tier3.length)));
-    const tAct3End = curT + (tFinish - curT) * frac2;
-    buildActWaves(tier2, curT, tAct3End, 'III', '3D Pose', 8, false);
-    buildActWaves(
-        tier3, Math.max(curT, tAct3End - 0.006), tFinish, 'IV', '3D Sculpt', 8,
-        true);
-  } else if (tier2.length > 0) {
-    buildActWaves(tier2, curT, tFinish, 'III', '3D Pose', 10, true);
-  } else if (tier3.length > 0) {
-    buildActWaves(tier3, curT, tFinish, 'IV', '3D Sculpt', 10, true);
+  if (poseWaves.length > 0 && fanWaves.length > 0) {
+    const poseEndT = Math.max(curT + 0.18, 0.82);
+    emitWavePhases(poseWaves, curT, poseEndT - 0.006, 'III', 'Pose Limb', 0.06, false);
+    emitWavePhases(fanWaves, poseEndT, tFinish, 'IV', 'Fan Out', 0.05, true);
+  } else if (poseWaves.length > 0) {
+    emitWavePhases(poseWaves, curT, tFinish, 'III', 'Pose Limb', 0.06, true);
+  } else if (fanWaves.length > 0) {
+    emitWavePhases(fanWaves, curT, tFinish, 'IV', 'Fan Out', 0.05, true);
+  }
+
+  let act1Keyframes = null;
+  if (solveXpbd) {
+    const guideFolder = new Folder(model);
+    const s2Tree = buildShortHopDijkstra(model, rf, shapingHopCosts);
+    guideFolder.adoptTree(s2Tree);
+    const posBase =
+        Float32Array.from(guideFolder.foldByHingesRaw(baseFoldAngles));
+    const xpbdSys = buildSignedXPBDSystem(model);
+    act1Keyframes = solveLiveSignedXPBD(
+        model, posBase,
+        (curAngles) => {
+          guideFolder.adoptTree(s2Tree);
+          return guideFolder.foldByHingesRaw(curAngles);
+        },
+        xpbdSys);
   }
 
   return {
     baseCompleteT: tBase,
     shapingStartT: tShapeStart,
     standupStartT: +standupT.toFixed(4),
+    rootFace: rf,
+    shapingHopCosts,
+    act1Keyframes,
     phases,
   };
 }
 
 /**
- * Evaluates a schedule at progress `t in [0, 1]`, returning per-edge angles,
- * active & folded edge sets, a phase-transition `diagramKey`, dominant phase
- * index, and HUD caption.
+ * Evaluates a piecewise-linear monotone velocity-equalization knot array.
  *
- * @param {!Object} schedule Schedule built by `buildFoldingSchedule`.
+ * @param {number} u Normalized window progress in `[0, 1]`.
+ * @param {?Float64Array|?Array<number>} knots Monotone knot values in `[0, 1]`.
+ * @return {number}
+ */
+function evalPiecewiseTimeMap(u, knots) {
+  if (!knots || knots.length < 2) return u;
+  const c = Math.max(0, Math.min(1, u));
+  const m = knots.length - 1;
+  const x = c * m;
+  const idx = Math.min(m - 1, Math.floor(x));
+  const frac = x - idx;
+  return knots[idx] + frac * (knots[idx + 1] - knots[idx]);
+}
+
+/**
+ * Exact inverse of `evalPiecewiseTimeMap` on a strictly monotone knot array.
+ *
+ * @param {number} w Warped window progress in `[0, 1]`.
+ * @param {?Float64Array|?Array<number>} knots Monotone knot values in `[0, 1]`.
+ * @return {number}
+ */
+function invertPiecewiseTimeMap(w, knots) {
+  if (!knots || knots.length < 2) return w;
+  const m = knots.length - 1;
+  if (w <= knots[0]) return 0;
+  if (w >= knots[m]) return 1;
+  let lo = 0;
+  let hi = m;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (knots[mid] <= w) lo = mid;
+    else hi = mid;
+  }
+  const span = knots[hi] - knots[lo];
+  const frac = span > 1e-12 ? (w - knots[lo]) / span : 0;
+  return (lo + frac) / m;
+}
+
+/**
+ * Maps external slider/playback progress `t in [0, 1]` through `s2TimeMap`
+ * into internal schedule phase time `warpedT in [0, 1]`.
+ *
+ * @param {?Object} schedule Schedule object, or null.
+ * @param {number} t Unwarped progress in `[0, 1]`.
+ * @return {number}
+ */
+export function warpScheduleProgress(schedule, t) {
+  const tRaw = Math.max(0, Math.min(1, t));
+  if (!schedule?.s2TimeMap) return tRaw;
+  const sT = schedule.shapingStartT ?? DEFAULT_SHAPING_START_T;
+  if (tRaw > sT && tRaw < 1) {
+    return sT +
+        (1 - sT) *
+            evalPiecewiseTimeMap((tRaw - sT) / (1 - sT), schedule.s2TimeMap);
+  }
+  return tRaw;
+}
+
+/**
+ * Exact inverse of `warpScheduleProgress`, mapping internal schedule phase time
+ * `warpedT in [0, 1]` back to external slider/playback progress `t in [0, 1]`.
+ *
+ * @param {?Object} schedule Schedule object, or null.
+ * @param {number} warpedT Internal schedule time in `[0, 1]`.
+ * @return {number}
+ */
+export function unwarpScheduleProgress(schedule, warpedT) {
+  const tClamped = Math.max(0, Math.min(1, warpedT));
+  if (!schedule?.s2TimeMap) return tClamped;
+  const sT = schedule.shapingStartT ?? DEFAULT_SHAPING_START_T;
+  if (tClamped > sT && tClamped < 1) {
+    return sT +
+        (1 - sT) *
+            invertPiecewiseTimeMap(
+                (tClamped - sT) / (1 - sT), schedule.s2TimeMap);
+  }
+  return tClamped;
+}
+
+/**
+ * Evaluates a schedule at progress `t in [0, 1]`, returning per-edge angles,
+ * warped schedule time `warpedT`, active & folded edge sets, a phase-transition
+ * `diagramKey`, dominant phase index, and HUD caption.
+ *
+ * @param {!Object} schedule Schedule from `hydrateSchedule` or
+ *     `buildFoldingSchedule`.
  * @param {number} numEdges Total number of edges in `model`.
  * @param {number} t Schedule progress in `[0, 1]`.
  * @param {?Float64Array=} outAngles Optional preallocated `(numEdges)` buffer.
  * @return {{
  *   angles: !Float64Array,
+ *   warpedT: number,
  *   label: string,
  *   activePhaseIndex: number,
  *   activeEdges: !Set<number>,
  *   foldedEdges: !Set<number>,
  *   diagramKey: string,
- *   stage2Progress: number
+ *   stage2Progress: number,
  * }}
  */
 export function evaluateScheduleAt(schedule, numEdges, t, outAngles = null) {
-  const tClamped = Math.max(0, Math.min(1, t));
+  const tClamped = warpScheduleProgress(schedule, t);
+
   const angles = outAngles ? outAngles.fill(0) : new Float64Array(numEdges);
   const activeEdges = new Set();
   const foldedEdges = new Set();
@@ -656,7 +720,8 @@ export function evaluateScheduleAt(schedule, numEdges, t, outAngles = null) {
     const span = ph.tEnd - ph.tStart;
     let u = 1;
     if (tClamped < ph.tEnd && span > 1e-9) {
-      u = easePhaseProgress((tClamped - ph.tStart) / span, ph.easeOut ?? 0);
+      u = easePhaseProgress(
+          (tClamped - ph.tStart) / span, ph.easeOut ?? 0, ph.power ?? 1);
       if (u > 0.01 && u < 0.99) {
         activePhases.push(idx);
         for (const e of ph.edgeIndices) activeEdges.add(e);
@@ -697,13 +762,13 @@ export function evaluateScheduleAt(schedule, numEdges, t, outAngles = null) {
   } else if (
       standupStartT > shapingStartT + 0.02 &&
       Math.abs(tClamped - standupStartT) <= 0.008) {
-    label = 'Act II Complete · Flat-Clipped Base Ready for 3D Pose';
+    label = 'Act II Complete · Narrowed Flaps Ready for 3D Pose';
   } else if (tClamped >= 1 - 1e-4) {
     label = 'Final 3D Sculpted Origami';
   } else if (!label) {
     label = tClamped < baseCompleteT ?
         'Act I · Box-Pleated Base Collapse' :
-        'Acts II–IV · 3D Shaping';
+        'Acts II–IV · 3D Shaping & Fan-Out';
   }
 
   const diagramKey = tClamped <= 1e-4 ?
@@ -716,10 +781,12 @@ export function evaluateScheduleAt(schedule, numEdges, t, outAngles = null) {
       0 :
       (shapingStartT >= 1 - 1e-6 ?
            1 :
-           Math.max(0, Math.min(1, (tClamped - shapingStartT) / (1 - shapingStartT))));
+           Math.max(
+               0, Math.min(1, (tClamped - shapingStartT) / (1 - shapingStartT))));
 
   return {
     angles,
+    warpedT: tClamped,
     label,
     activePhaseIndex,
     activeEdges,

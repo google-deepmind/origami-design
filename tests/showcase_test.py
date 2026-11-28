@@ -21,7 +21,6 @@ import pathlib
 import re
 import shutil
 import subprocess
-import tempfile
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -60,8 +59,13 @@ _MODELS_WITH_UNMODIFIED_BASE_TOPOLOGY = frozenset({
     'castor-and-pollux',
     'crested-hoopoe',
     'emperor-scorpion',
+    'golden-eagle',
     'indian-peacock',
+    'king-cobra',
     'spinosaurus',
+    'triceratops',
+    'winged-pegasus',
+    'wyrmlord-dragon',
 })
 
 
@@ -222,7 +226,7 @@ class ShowcaseTest(parameterized.TestCase):
     if entry['slug'] in _MODELS_WITH_UNMODIFIED_BASE_TOPOLOGY:
       self.assertEmpty(violations)
 
-  def test_video_timeline_and_live_schedule_under_node(self):
+  def _run_node_script(self, script_name: str, script_body: str) -> None:
     node = os.environ.get('NODE_BIN') or shutil.which('node')
     if node and not os.path.isabs(node) and not os.path.exists(node):
       node = os.path.join(
@@ -235,18 +239,28 @@ class ShowcaseTest(parameterized.TestCase):
     if not node or not (os.path.exists(node) or shutil.which(node)):
       self.skipTest('node runtime not available')
 
+    tmp = pathlib.Path(self.create_tempdir().full_path)
+    (tmp / 'package.json').write_text('{"type": "module"}\n', encoding='utf-8')
+    for js_file in (_DOCS_DIR / 'js').glob('*.js'):
+      shutil.copy2(js_file, tmp / js_file.name)
+    script_path = tmp / script_name
+    script_path.write_text(script_body, encoding='utf-8')
+    completed = subprocess.run(
+        [node, str(script_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    self.assertEqual(
+        completed.returncode, 0, msg=completed.stderr or completed.stdout
+    )
+
+  def test_video_timeline_and_live_schedule_under_node(self):
     eagle_fold = (_MODELS_DIR / 'golden-eagle' / 'shaped_3d.fold').resolve()
     eagle_sf = (_MODELS_DIR / 'golden-eagle' / 'stick_figure.json').resolve()
-    with tempfile.TemporaryDirectory() as tmpdir:
-      tmp = pathlib.Path(tmpdir)
-      (tmp / 'package.json').write_text(
-          '{"type": "module"}\n', encoding='utf-8'
-      )
-      for js_file in (_DOCS_DIR / 'js').glob('*.js'):
-        shutil.copy2(js_file, tmp / js_file.name)
-      script_path = tmp / 'check.mjs'
-      script_path.write_text(
-          f"""
+    self._run_node_script(
+        'check.mjs',
+        f"""
       import fs from 'node:fs';
       import assert from 'node:assert/strict';
       import {{
@@ -291,14 +305,27 @@ class ShowcaseTest(parameterized.TestCase):
           JSON.parse(fs.readFileSync({json.dumps(str(eagle_fold))}, 'utf8')));
       const sf = JSON.parse(
           fs.readFileSync({json.dumps(str(eagle_sf))}, 'utf8'));
-      const sched = buildFoldingSchedule(eagle, sf);
+      const tFast0 = performance.now();
+      const fastSched = buildFoldingSchedule(eagle, sf);
+      const fastMs = performance.now() - tFast0;
+      assert.equal(fastSched.act1Keyframes, null);
+      assert(fastMs < 150, `non-XPBD schedule took ${{fastMs}} ms`);
+
+      const sched = buildFoldingSchedule(eagle, sf, {{solveXpbd: true}});
+      assert(Array.isArray(sched.act1Keyframes) && sched.act1Keyframes.length >= 15);
       const folder = new Folder(eagle);
       folder.setSchedule(sched);
+      let act1PeakStrain = 0;
       let peakStrain = 0;
       let transitions = 0;
       let lastKey = null;
       for (let i = 0; i <= 480; i++) {{
-        folder.positionsAt(i / 480, true);
+        const p = i / 480;
+        folder.positionsAt(p, true);
+        if (p <= sched.baseCompleteT) {{
+          act1PeakStrain = Math.max(
+              act1PeakStrain, folder.lastState.strainPct);
+        }}
         peakStrain = Math.max(peakStrain, folder.lastState.strainPct);
         if (folder.lastState.diagramKey !== lastKey) {{
           transitions++;
@@ -306,21 +333,156 @@ class ShowcaseTest(parameterized.TestCase):
         }}
       }}
       assert(
-          peakStrain < 105,
+          act1PeakStrain < 8,
+          `golden-eagle live Act I peak strain=${{act1PeakStrain}}`);
+      assert(
+          peakStrain < 20,
           `golden-eagle live peak strain=${{peakStrain}}`);
       assert(
           transitions <= 2 * sched.phases.length + 4,
           `excessive diagramKey transitions=${{transitions}}`);
       """,
-          encoding='utf-8',
-      )
-      res = subprocess.run(
-          [node, str(script_path)],
-          capture_output=True,
-          text=True,
-          check=False,
-      )
-      self.assertEqual(res.returncode, 0, msg=res.stderr or res.stdout)
+    )
+
+  def test_bundled_schedules_conserve_area_under_node(self):
+    models_dir_str = str(_MODELS_DIR.resolve())
+    self._run_node_script(
+        'verify_schedules.mjs',
+        f"""
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import assert from 'node:assert/strict';
+      import {{
+        Folder,
+        computeModelMeshHash,
+        hydrateSchedule,
+        parseFold,
+      }} from './fold.js';
+      import {{
+        buildFoldingSchedule,
+        unwarpScheduleProgress,
+        warpScheduleProgress,
+      }} from './schedule.js';
+      import {{earClipFace}} from './xpbd.js';
+
+      function meshSurfaceArea(tris, pos) {{
+        let area = 0;
+        for (let t = 0; t < tris.length; t++) {{
+          const [a, b, c] = tris[t];
+          const i0 = 3 * a;
+          const i1 = 3 * b;
+          const i2 = 3 * c;
+          const ux = pos[i1] - pos[i0];
+          const uy = pos[i1 + 1] - pos[i0 + 1];
+          const uz = pos[i1 + 2] - pos[i0 + 2];
+          const vx = pos[i2] - pos[i0];
+          const vy = pos[i2 + 1] - pos[i0 + 1];
+          const vz = pos[i2 + 2] - pos[i0 + 2];
+          area += 0.5 * Math.hypot(
+              uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+        }}
+        return area;
+      }}
+
+      const modelsDir = {json.dumps(models_dir_str)};
+      const catalog = JSON.parse(
+          fs.readFileSync(path.join(modelsDir, 'catalog.json'), 'utf8'));
+      for (const entry of catalog) {{
+        const dir = path.join(modelsDir, entry.slug);
+        const foldJson = JSON.parse(
+            fs.readFileSync(path.join(dir, 'shaped_3d.fold'), 'utf8'));
+        const model = parseFold(foldJson);
+        const tris = model.faces.flatMap((fc) => earClipFace(fc, model.flat));
+        const sf = JSON.parse(
+            fs.readFileSync(path.join(dir, 'stick_figure.json'), 'utf8'));
+        const schedPath = path.join(dir, 'schedule.json');
+        const rawSched = fs.existsSync(schedPath) ?
+            JSON.parse(fs.readFileSync(schedPath, 'utf8')) :
+            null;
+        const hydrated = hydrateSchedule(rawSched, model);
+        if (rawSched) {{
+          assert.notEqual(
+              hydrated, null, `${{entry.slug}} schedule.json failed hydration`);
+          assert.equal(typeof rawSched.act1DeltaQ, 'string');
+          assert.equal(rawSched.meshHash, computeModelMeshHash(model));
+          assert.equal(
+              hydrateSchedule({{...rawSched, numVertices: null}}, model), null);
+          assert.equal(
+              hydrateSchedule(
+                  {{...rawSched, rootFace: model.faces.length}}, model),
+              null);
+          assert.equal(
+              hydrateSchedule({{...rawSched, shapingHopCosts: [1, 2]}}, model),
+              null);
+          const movedModel = {{...model, flat: Float64Array.from(model.flat)}};
+          movedModel.flat[0] += 1e-3;
+          assert.equal(hydrateSchedule(rawSched, movedModel), null);
+        }}
+        const sched =
+            hydrated ?? buildFoldingSchedule(model, sf, {{solveXpbd: true}});
+        const folder = new Folder(model);
+        folder.setSchedule(sched);
+
+        for (let k = 0; k <= 40; k++) {{
+          const p = k / 40;
+          const w = warpScheduleProgress(sched, p);
+          const u = unwarpScheduleProgress(sched, w);
+          assert(
+              Math.abs(u - p) < 1e-9,
+              `${{entry.slug}} warp roundtrip drift=${{Math.abs(u - p)}}`);
+        }}
+
+        const a0 = meshSurfaceArea(tris, folder.positionsAt(0, true));
+        assert(Math.abs(a0 - 1.0) < 1e-3, `${{entry.slug}} flat area=${{a0}}`);
+
+        const nSteps = 200;
+        let maxAct1AreaDevPct = 0;
+        let prevPos = Float32Array.from(folder.positionsAt(0, true));
+        const maxVertSteps = new Float64Array(nSteps);
+        for (let k = 1; k <= nSteps; k++) {{
+          const p = k / nSteps;
+          const pos = folder.positionsAt(p, true);
+          const wt = folder.lastState.warpedT;
+          if (wt <= sched.shapingStartT + 1e-9) {{
+            const areaNow = meshSurfaceArea(tris, pos);
+            const dev = 100 * Math.abs(areaNow - a0) / a0;
+            if (dev > maxAct1AreaDevPct) maxAct1AreaDevPct = dev;
+          }}
+          let stepMax = 0;
+          for (let i = 0; i < pos.length; i += 3) {{
+            const d = Math.hypot(
+                pos[i] - prevPos[i],
+                pos[i + 1] - prevPos[i + 1],
+                pos[i + 2] - prevPos[i + 2]);
+            if (d > stepMax) stepMax = d;
+          }}
+          maxVertSteps[k - 1] = stepMax;
+          prevPos.set(pos);
+        }}
+        const peakVertStep = Math.max(...maxVertSteps);
+        assert(
+            peakVertStep < 0.35,
+            `${{entry.slug}} discontinuous frame jump=${{peakVertStep}}`);
+        for (let k = 1; k < nSteps - 1; k++) {{
+          const neighbor = Math.max(
+              1e-3, 0.5 * (maxVertSteps[k - 1] + maxVertSteps[k + 1]));
+          assert(
+              maxVertSteps[k] / neighbor < 4.5,
+              `${{entry.slug}} step spike ratio=${{maxVertSteps[k] / neighbor}} at k=${{k}}`);
+        }}
+        assert(
+            maxAct1AreaDevPct < 12.0,
+            `${{entry.slug}} Act I area deviation=${{maxAct1AreaDevPct}}%`);
+        folder.positionsAt(
+            unwarpScheduleProgress(sched, sched.baseCompleteT), true);
+        const maxBaseStrain =
+            (!hydrated || rawSched?.includesBaseFrame) ? 2.5 : 0.1;
+        assert(
+            folder.lastState.strainPct < maxBaseStrain,
+            `${{entry.slug}} base strain=${{folder.lastState.strainPct}}%`);
+      }}
+      """,
+    )
 
   @parameterized.named_parameters(_each_model())
   def test_recorded_history_schema(self, entry):

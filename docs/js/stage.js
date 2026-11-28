@@ -20,6 +20,7 @@
  */
 
 import {Folder} from './fold.js';
+import {DEFAULT_BASE_COMPLETE_T} from './schedule.js';
 
 /** Camera presets as [azimuth, elevation] in degrees from the model's front. */
 const VIEWS = {
@@ -217,12 +218,18 @@ export class Stage {
     this._hero = DEFAULT_HERO;
     /** @private {number} */
     this._radius = 0;
+    /** @private {number} */
+    this._flatRadius = 0.71;
+    /** @private {number} */
+    this._foldedRadius = 0.45;
     /** @private {boolean} */
     this._xray = false;
     /** @private {boolean} */
     this._creasesVisible = false;
     /** @private {number} */
     this._progress = 1;
+    /** @private {number} */
+    this._baseCompleteT = DEFAULT_BASE_COMPLETE_T;
     /** @private {boolean} */
     this._videoMode = false;
     /**
@@ -371,6 +378,7 @@ export class Stage {
     const THREE = this._three;
     this._model = model;
     this._folder = new Folder(model);
+    this._baseCompleteT = schedule?.baseCompleteT ?? DEFAULT_BASE_COMPLETE_T;
     this._folder.setSchedule(schedule);
     this._hero = hero;
     this._positions = new THREE.BufferAttribute(this._folder.positions, 3);
@@ -402,9 +410,42 @@ export class Stage {
       this._foldedPose.copy(this._flatPose);
     }
 
+    const measureRadiusAt = (p) => {
+      const pos = this._folder.positionsAt(p, Boolean(schedule));
+      const e = this._folder.standupProgress(p, Boolean(schedule));
+      const q = new THREE.Quaternion().slerpQuaternions(
+          this._flatPose, this._foldedPose, e);
+      const b = new THREE.Box3();
+      const pt = new THREE.Vector3();
+      for (let i = 0; i < pos.length; i += 3) {
+        b.expandByPoint(pt.fromArray(pos, i).applyQuaternion(q));
+      }
+      const c = b.getCenter(new THREE.Vector3());
+      let r = 0;
+      for (let i = 0; i < pos.length; i += 3) {
+        pt.fromArray(pos, i).applyQuaternion(q);
+        r = Math.max(r, pt.distanceTo(c));
+      }
+      return Math.max(0.15, r);
+    };
+    this._flatRadius = measureRadiusAt(0);
+    this._foldedRadius = measureRadiusAt(1);
+
     this._radius = 0;
     this.setFold(1, Boolean(schedule));
     this.setView('hero');
+  }
+
+  /**
+   * Hot-swaps the active `schedule` (for example once `xpbd_worker.js`
+   * finishes computing Act-I keyframes in the background) without resetting
+   * camera orientation or rebuilding scene geometries.
+   *
+   * @param {?Object} schedule
+   */
+  setSchedule(schedule) {
+    this._baseCompleteT = schedule?.baseCompleteT ?? DEFAULT_BASE_COMPLETE_T;
+    this._folder?.setSchedule(schedule);
   }
 
   /**
@@ -424,7 +465,7 @@ export class Stage {
     this._updateActiveCreases(progress);
 
     // Keep the sheet flat on the table through Act I collapse and Act II
-    // flat-clipping, then smoothly stand upright during 3D posing.
+    // narrowing, then smoothly stand upright during 3D posing.
     const ease = this._folder.standupProgress(progress, staged);
     const pose = this._paper.quaternion.slerpQuaternions(
         this._flatPose, this._foldedPose, ease);
@@ -435,20 +476,31 @@ export class Stage {
     }
     const center = box.getCenter(new THREE.Vector3());
     this._paper.position.set(-center.x, -box.min.y, -center.z);
-    let radius = 0;
+    let liveRadius = 0;
     for (let i = 0; i < positions.length; i += 3) {
       point.fromArray(positions, i).applyQuaternion(pose);
-      radius = Math.max(radius, point.distanceTo(center));
+      liveRadius = Math.max(liveRadius, point.distanceTo(center));
     }
+
+    // Hold a steady studio-table reference scale across Act I/II so the sheet
+    // visibly compresses in volume into its base strip before gliding to
+    // `_foldedRadius` as it stands up in 3D.
+    const warpedT =
+        staged ? (this._folder.lastState?.warpedT ?? progress) : progress;
+    const collapseFrac = Math.max(
+        0, Math.min(1, warpedT / Math.max(1e-4, this._baseCompleteT)));
+    const tableRef = this._flatRadius * (1.0 - 0.16 * collapseFrac);
+    const frameRadius = Math.max(
+        liveRadius, (1 - ease) * tableRef + ease * this._foldedRadius);
 
     const target = this._controls.target;
     const offset = this._camera.position.clone().sub(target);
-    if (this._radius > 0 && radius > 0) {
-      offset.multiplyScalar(radius / this._radius);
+    if (this._radius > 0 && frameRadius > 0) {
+      offset.multiplyScalar(frameRadius / this._radius);
     }
     target.set(0, center.y - box.min.y, 0);
     this._camera.position.copy(target).add(offset);
-    this._radius = radius;
+    this._radius = frameRadius;
     return this._folder.lastState;
   }
 

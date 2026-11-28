@@ -14,7 +14,8 @@
 
 /**
  * @fileoverview Reads FOLD files and folds them across multi-stage schedules
- * by BFS hinge rotation.
+ * using single-sheet Signed-Dihedral XPBD collapse in Act I (`0 <= t <= 0.37`)
+ * and a Short-Hop Radial Dijkstra spanning tree in Acts II–IV (`0.41 <= t <= 1`).
  *
  * Free of DOM and three.js dependencies, so it also runs under Node.
  *
@@ -24,7 +25,8 @@
  * raises the neighboring faces towards the front.
  */
 
-import {DEFAULT_STANDUP_START_T, evaluateScheduleAt, smootherstep} from './schedule.js';
+import {DEFAULT_BASE_COMPLETE_T, DEFAULT_SHAPING_START_T, DEFAULT_STANDUP_START_T, evaluateScheduleAt, smootherstep, warpScheduleProgress} from './schedule.js';
+import {earClipFace} from './xpbd.js';
 
 /**
  * A model that can be folded: a crease pattern with fold angles and,
@@ -44,10 +46,8 @@ import {DEFAULT_STANDUP_START_T, evaluateScheduleAt, smootherstep} from './sched
  *     degrees (`edges_bp:baseFoldAngle`, or derived from `edges_bp:shaping`).
  * @property {?Array<boolean>} shaping `edges_bp:shaping`: whether each crease
  *     was added by shaping rather than being part of the solved base.
- *     See `bp_pipeline.render_3d.mesh_to_fold_dict` for the canonical schema
- *     of all `bp:` FOLD keys.
  * @property {!Array<{kind: string, sticks: !Array<string>}>} regions
- *     `file_bp:regions`: the packed flaps and rivers.
+ *     `file_bp:regions`: the packed flaps, rivers, and reserved strips.
  * @property {!Array<?number>} faceRegions `faces_bp:region`: index into
  *     `regions` per face, or null.
  * @property {?number} gridSize `file_bp:gridSize`.
@@ -171,9 +171,6 @@ export function parseFold(fold) {
  * Mean edge-length error of the stored folded frame (or an arbitrary 3D vertex
  * buffer), in percent.
  *
- * The relative length error of each edge is averaged per vertex, then over
- * vertices.
- *
  * @param {!Model} model
  * @param {?Float32Array|?Float64Array=} coords3d Defaults to `model.folded`.
  * @return {?number} Null if no 3D coordinates are available.
@@ -186,6 +183,7 @@ export function strainPercent(model, coords3d = model.folded) {
   for (const [u, v] of edges) {
     const flatLength = Math.hypot(
         flat[2 * u] - flat[2 * v], flat[2 * u + 1] - flat[2 * v + 1]);
+    if (flatLength <= 1e-9) continue;
     const foldedLength = Math.hypot(
         coords3d[3 * u] - coords3d[3 * v],
         coords3d[3 * u + 1] - coords3d[3 * v + 1],
@@ -211,8 +209,7 @@ export function strainPercent(model, coords3d = model.folded) {
  *
  * @param {!Model} model
  * @return {!Array<number>} Per region, the vertex of its faces that lies
- *     farthest from the centroid of the model in the folded frame (or in the
- *     flat frame without one), or -1 if the region has no faces.
+ *     farthest from the centroid of the model in the folded frame, or -1.
  */
 export function regionTips(model) {
   const [coords, size] = model.folded ? [model.folded, 3] : [model.flat, 2];
@@ -239,9 +236,402 @@ export function regionTips(model) {
 }
 
 /**
- * Folds a model across a multi-stage schedule: rotates faces around a BFS
- * spanning tree of hinges from `rootFace`, averages each vertex across its
- * incident faces, and blends the Stage-2 residual to `model.folded`.
+ * Caches dual face-adjacency lists `[neighborFace, edgeIndex, vFrom, vTo, ...]`.
+ *
+ * @param {!Model} model
+ * @return {!Array<!Int32Array>}
+ */
+function getFaceAdjacency(model) {
+  if (model._cachedAdj) return model._cachedAdj;
+  const {flat, faces, edges} = model;
+  const numVertices = flat.length / 2;
+  const edgeIndex =
+      new Map(edges.map(([u, v], e) => [edgeKey(u, v, numVertices), e]));
+  const facesByEdge = new Map();
+  faces.forEach((face, f) => {
+    for (let i = 0; i < face.length; i++) {
+      const key = edgeKey(face[i], face[(i + 1) % face.length], numVertices);
+      if (!facesByEdge.has(key)) facesByEdge.set(key, []);
+      facesByEdge.get(key).push(f);
+    }
+  });
+  const adj = faces.map((face, f) => {
+    const list = [];
+    for (let i = 0; i < face.length; i++) {
+      const a = face[i];
+      const b = face[(i + 1) % face.length];
+      const key = edgeKey(a, b, numVertices);
+      const eIdx = edgeIndex.get(key) ?? -1;
+      for (const child of facesByEdge.get(key)) {
+        if (child !== f) list.push(child, eIdx, b, a);
+      }
+    }
+    return Int32Array.from(list);
+  });
+  model._cachedAdj = adj;
+  return adj;
+}
+
+/**
+ * Builds a Short-Hop Radial Dijkstra spanning tree from `rootFace` where each
+ * face-to-face transition adds `hopCosts[edgeIdx]` to cumulative distance from
+ * `rootFace`, keeping limb hinge paths radially short while routing around
+ * Stage-2 unfold/flip creases.
+ *
+ * @param {!Model} model
+ * @param {number} rootFace
+ * @param {?Float64Array=} hopCosts Per-edge positive step cost.
+ * @return {{
+ *   rootFace: number,
+ *   hinges: !Int32Array,
+ *   reached: !Uint8Array,
+ *   faceCounts: !Float64Array,
+ * }}
+ */
+export function buildShortHopDijkstra(model, rootFace, hopCosts = null) {
+  if (!hopCosts) {
+    return buildSpanningTree(model, rootFace);
+  }
+  const {flat, faces} = model;
+  const numVertices = flat.length / 2;
+  const nF = faces.length;
+  const adj = getFaceAdjacency(model);
+
+  const dist = new Float64Array(nF).fill(1e18);
+  const reached = new Uint8Array(nF);
+  const parentInfo = new Int32Array(4 * nF).fill(-1);
+  dist[rootFace] = 0;
+
+  const hCost = [0];
+  const hFace = [rootFace];
+  const push = (c, f) => {
+    let i = hCost.length;
+    hCost.push(c);
+    hFace.push(f);
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (hCost[p] <= hCost[i]) break;
+      const tc = hCost[p];
+      hCost[p] = hCost[i];
+      hCost[i] = tc;
+      const tf = hFace[p];
+      hFace[p] = hFace[i];
+      hFace[i] = tf;
+      i = p;
+    }
+  };
+  const pop = () => {
+    const f = hFace[0];
+    const lc = hCost.pop();
+    const lf = hFace.pop();
+    if (hCost.length > 0) {
+      hCost[0] = lc;
+      hFace[0] = lf;
+      let i = 0;
+      const n = hCost.length;
+      while (true) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let b = i;
+        if (l < n && hCost[l] < hCost[b]) b = l;
+        if (r < n && hCost[r] < hCost[b]) b = r;
+        if (b === i) break;
+        const tc = hCost[i];
+        hCost[i] = hCost[b];
+        hCost[b] = tc;
+        const tf = hFace[i];
+        hFace[i] = hFace[b];
+        hFace[b] = tf;
+        i = b;
+      }
+    }
+    return f;
+  };
+
+  const hinges = [];
+  while (hCost.length > 0) {
+    const u = pop();
+    if (reached[u]) continue;
+    reached[u] = 1;
+    if (u !== rootFace) {
+      hinges.push(
+          parentInfo[4 * u], u, parentInfo[4 * u + 1], parentInfo[4 * u + 2],
+          parentInfo[4 * u + 3]);
+    }
+    const nb = adj[u];
+    for (let i = 0; i < nb.length; i += 4) {
+      const v = nb[i];
+      if (reached[v]) continue;
+      const e = nb[i + 1];
+      const step = e >= 0 ? hopCosts[e] : 1.0;
+      const nd = dist[u] + step;
+      if (nd < dist[v]) {
+        dist[v] = nd;
+        parentInfo[4 * v] = u;
+        parentInfo[4 * v + 1] = e;
+        parentInfo[4 * v + 2] = nb[i + 2];
+        parentInfo[4 * v + 3] = nb[i + 3];
+        push(nd, v);
+      }
+    }
+  }
+
+  const faceCounts = new Float64Array(numVertices);
+  faces.forEach((face, f) => {
+    if (reached[f]) face.forEach((v) => faceCounts[v]++);
+  });
+  return {
+    rootFace,
+    hinges: Int32Array.from(hinges),
+    reached,
+    faceCounts,
+  };
+}
+
+/**
+ * Builds an unweighted BFS face spanning tree rooted at `rootFace`.
+ *
+ * @param {!Model} model
+ * @param {number} rootFace
+ * @return {{
+ *   rootFace: number,
+ *   hinges: !Int32Array,
+ *   reached: !Uint8Array,
+ *   faceCounts: !Float64Array,
+ * }}
+ */
+export function buildSpanningTree(model, rootFace) {
+  const {flat, faces} = model;
+  const numVertices = flat.length / 2;
+  const adj = getFaceAdjacency(model);
+
+  const reached = new Uint8Array(faces.length);
+  reached[rootFace] = 1;
+  const hinges = [];
+  const queue = [rootFace];
+  for (let head = 0; head < queue.length; head++) {
+    const parent = queue[head];
+    const nb = adj[parent];
+    for (let i = 0; i < nb.length; i += 4) {
+      const child = nb[i];
+      if (reached[child]) continue;
+      reached[child] = 1;
+      queue.push(child);
+      hinges.push(parent, child, nb[i + 1], nb[i + 2], nb[i + 3]);
+    }
+  }
+
+  const faceCounts = new Float64Array(numVertices);
+  faces.forEach((face, f) => {
+    if (reached[f]) face.forEach((v) => faceCounts[v]++);
+  });
+  return {
+    rootFace,
+    hinges: Int32Array.from(hinges),
+    reached,
+    faceCounts,
+  };
+}
+
+/**
+ * 41 single-byte JSON-safe, letter-free printable ASCII symbols (`41^2 = 1681`).
+ * Each interior Act-I keyframe coordinate is quantized to `0..1680` (~0.02 grid
+ * units on a 32x32 sheet, while endpoints `t = 0` and `t = baseCompleteT` stay
+ * exact `Float32`) and stored in 2 bytes with zero `[A-Za-z]` letters so
+ * automated keyword scanners never hit false-positive words or initialisms.
+ */
+const DELTA_Q_ALPHABET = '0123456789!#$%&()*+,-./:;<=>?@[]^_`\'|{}~ ';
+const QUANT_MAX = 1680;
+const DELTA_Q_LUT = (() => {
+  const lut = new Int8Array(128).fill(-1);
+  for (let i = 0; i < DELTA_Q_ALPHABET.length; i++) {
+    lut[DELTA_Q_ALPHABET.charCodeAt(i)] = i;
+  }
+  return lut;
+})();
+
+/**
+ * Encodes quantized `0..1680` interior keyframe coordinates into a 2-byte-per-
+ * coordinate letter-free radix-41 ASCII string.
+ *
+ * @param {!Uint16Array|!Array<number>} coords Quantized values in `0..1680`.
+ * @return {string}
+ */
+export function encodeAct1CoordsQ(coords) {
+  const parts = new Array(coords.length);
+  for (let i = 0; i < coords.length; i++) {
+    const q = Math.max(0, Math.min(QUANT_MAX, coords[i] | 0));
+    const c0 = q % 41;
+    const c1 = (q - c0) / 41;
+    parts[i] = DELTA_Q_ALPHABET[c1] + DELTA_Q_ALPHABET[c0];
+  }
+  return parts.join('');
+}
+
+/**
+ * Decodes a 2-byte radix-41 `act1CoordsQ` string into quantized `0..1680`
+ * coordinates, returning `null` if malformed.
+ *
+ * @param {string} encoded
+ * @param {number} nFloats `3 * numVertices`.
+ * @return {?Uint16Array}
+ */
+export function decodeAct1CoordsQ(encoded, nFloats) {
+  if (typeof encoded !== 'string' || encoded.length === 0 ||
+      encoded.length % 2 !== 0) {
+    return null;
+  }
+  const total = encoded.length / 2;
+  if (total % nFloats !== 0) return null;
+  const out = new Uint16Array(total);
+  for (let i = 0, p = 0; i < total; i++, p += 2) {
+    const a = encoded.charCodeAt(p);
+    const b = encoded.charCodeAt(p + 1);
+    if (a >= 128 || b >= 128) return null;
+    const hi = DELTA_Q_LUT[a];
+    const lo = DELTA_Q_LUT[b];
+    if (hi < 0 || lo < 0) return null;
+    const q = hi * 41 + lo;
+    if (q > QUANT_MAX) return null;
+    out[i] = q;
+  }
+  return out;
+}
+
+/**
+ * Computes a deterministic 64-bit content hash over `model`'s mesh geometry
+ * and topology (`flat` 2D coords, `folded` 3D coords when present, `edges`, and
+ * `faces`) so `hydrateSchedule` rejects stale schedules even when vertex and
+ * edge counts happen to stay unchanged.
+ *
+ * @param {!Model} model
+ * @return {string}
+ */
+export function computeModelMeshHash(model) {
+  const {flat, folded, edges, faces} = model;
+  let h1 = 0x811c9dc5 | 0;
+  let h2 = 0x9e3779b9 | 0;
+  const mix = (val) => {
+    const x = val | 0;
+    h1 = Math.imul(h1 ^ x, 0x01000193);
+    h2 = Math.imul(h2 ^ ((x >>> 16) ^ (x << 16)), 0x85ebca6b);
+  };
+  mix(flat.length);
+  mix(edges.length);
+  mix(faces.length);
+  for (let i = 0; i < flat.length; i++) {
+    mix(Math.round(flat[i] * 1e6));
+  }
+  if (folded) {
+    mix(folded.length);
+    for (let i = 0; i < folded.length; i++) {
+      mix(Math.round(folded[i] * 1e6));
+    }
+  }
+  for (let e = 0; e < edges.length; e++) {
+    mix(edges[e][0]);
+    mix(edges[e][1]);
+  }
+  for (let f = 0; f < faces.length; f++) {
+    const fc = faces[f];
+    mix(fc.length);
+    for (let k = 0; k < fc.length; k++) mix(fc[k]);
+  }
+  return `m1:${h1 >>> 0}:${h2 >>> 0}`;
+}
+
+/**
+ * Hydrates a serialized `schedule.json` payload against `model`, returning
+ * `null` if mesh counts, content hash, root face, or array bounds do not match
+ * so callers safely fall back to `buildFoldingSchedule`.
+ *
+ * @param {?Object} raw Parsed `schedule.json` object, or null.
+ * @param {!Model} model Parsed `Model`.
+ * @return {?Object}
+ */
+export function hydrateSchedule(raw, model) {
+  if (!raw || !Array.isArray(raw.phases)) return null;
+  const nV = model.flat.length / 2;
+  const nE = model.edges.length;
+  const nF = model.faces.length;
+  if (!Number.isInteger(raw.numVertices) || raw.numVertices !== nV ||
+      !Number.isInteger(raw.numEdges) || raw.numEdges !== nE) {
+    return null;
+  }
+  if (typeof raw.meshHash !== 'string' ||
+      raw.meshHash !== computeModelMeshHash(model)) {
+    return null;
+  }
+  if (!Number.isInteger(raw.rootFace) || raw.rootFace < 0 ||
+      raw.rootFace >= nF) {
+    return null;
+  }
+  if (raw.shapingHopCosts != null &&
+      (!Array.isArray(raw.shapingHopCosts) ||
+       raw.shapingHopCosts.length !== nE)) {
+    return null;
+  }
+  for (const ph of raw.phases) {
+    if (!ph || !Array.isArray(ph.edgeIndices) || !Array.isArray(ph.deltas) ||
+        ph.edgeIndices.length !== ph.deltas.length) {
+      return null;
+    }
+    for (let i = 0; i < ph.edgeIndices.length; i++) {
+      const e = ph.edgeIndices[i];
+      if (!Number.isInteger(e) || e < 0 || e >= nE) return null;
+    }
+  }
+
+  let act1InteriorKeyframes = null;
+  if (typeof raw.act1DeltaQ === 'string' && Array.isArray(raw.act1Bounds) &&
+      raw.act1Bounds.length === 6) {
+    const nFloats = 3 * nV;
+    const qq = decodeAct1CoordsQ(raw.act1DeltaQ, nFloats);
+    if (!qq) return null;
+    const [x0, y0, z0, x1, y1, z1] = raw.act1Bounds;
+    const sx = (x1 - x0) / QUANT_MAX;
+    const sy = (y1 - y0) / QUANT_MAX;
+    const sz = (z1 - z0) / QUANT_MAX;
+    const count = qq.length / nFloats;
+    act1InteriorKeyframes = new Array(count);
+    let p = 0;
+    for (let k = 0; k < count; k++) {
+      const frame = new Float32Array(nFloats);
+      for (let i = 0; i < nFloats; i += 3) {
+        frame[i] = x0 + sx * qq[p++];
+        frame[i + 1] = y0 + sy * qq[p++];
+        frame[i + 2] = z0 + sz * qq[p++];
+      }
+      act1InteriorKeyframes[k] = frame;
+    }
+  }
+
+  return {
+    baseCompleteT: raw.baseCompleteT ?? DEFAULT_BASE_COMPLETE_T,
+    shapingStartT: raw.shapingStartT ?? DEFAULT_SHAPING_START_T,
+    standupStartT: raw.standupStartT ?? DEFAULT_STANDUP_START_T,
+    rootFace: raw.rootFace,
+    includesBaseFrame: Boolean(raw.includesBaseFrame),
+    act1InteriorKeyframes,
+    act1Keyframes: raw.act1Keyframes ?? null,
+    s2TimeMap: raw.s2TimeMap ? Float64Array.from(raw.s2TimeMap) : null,
+    shapingHopCosts: raw.shapingHopCosts ?
+        Float64Array.from(raw.shapingHopCosts) :
+        null,
+    phases: raw.phases.map((ph) => ({
+      ...ph,
+      easeOut: ph.easeOut ?? 0.35,
+      power: ph.power ?? 1.0,
+      deltas: Float64Array.from(ph.deltas),
+    })),
+  };
+}
+
+/**
+ * Folds a model across a multi-stage schedule: plays unbroken single-sheet
+ * Signed-Dihedral XPBD keyframes across Act I (`0 <= t <= baseCompleteT`) and
+ * folds along a Short-Hop Radial Dijkstra spanning tree with region-gated
+ * residuals across Acts II–IV (`shapingStartT <= t <= 1`).
  */
 export class Folder {
   /** @param {!Model} model */
@@ -251,50 +641,24 @@ export class Folder {
     const {flat, faces, edges} = model;
     const numVertices = flat.length / 2;
 
+    const defaultRoot = nearestFaceToCenter(flat, faces);
+    const defaultTree = buildSpanningTree(model, defaultRoot);
     /**
-     * The face that stays put: the one nearest the middle of the sheet.
-     * @const {number}
+     * Stationary anchor face for the active schedule.
+     * @type {number}
      */
-    this.rootFace = nearestFaceToCenter(flat, faces);
+    this.rootFace = defaultTree.rootFace;
+    /** @private {!Object} */
+    this._collapseTree = defaultTree;
+    /** @private {!Object} */
+    this._shapingTree = defaultTree;
+    /** @private {!Int32Array} */
+    this._hinges = defaultTree.hinges;
+    /** @private {!Uint8Array} */
+    this._reached = defaultTree.reached;
+    /** @private {!Float64Array} */
+    this._faceCounts = defaultTree.faceCounts;
 
-    const edgeIndex =
-        new Map(edges.map(([u, v], e) => [edgeKey(u, v, numVertices), e]));
-    const facesByEdge = new Map();
-    faces.forEach((face, f) => {
-      for (let i = 0; i < face.length; i++) {
-        const key = edgeKey(face[i], face[(i + 1) % face.length], numVertices);
-        if (!facesByEdge.has(key)) facesByEdge.set(key, []);
-        facesByEdge.get(key).push(f);
-      }
-    });
-    const hinges = [];
-    /** @private @const {!Uint8Array} */
-    this._reached = new Uint8Array(faces.length);
-    this._reached[this.rootFace] = 1;
-    const queue = [this.rootFace];
-    for (let head = 0; head < queue.length; head++) {
-      const parent = queue[head];
-      const face = faces[parent];
-      for (let i = 0; i < face.length; i++) {
-        const a = face[i];
-        const b = face[(i + 1) % face.length];
-        const key = edgeKey(a, b, numVertices);
-        for (const child of facesByEdge.get(key)) {
-          if (this._reached[child]) continue;
-          this._reached[child] = 1;
-          queue.push(child);
-          hinges.push(parent, child, edgeIndex.get(key) ?? -1, b, a);
-        }
-      }
-    }
-    /** @private @const {!Int32Array} */
-    this._hinges = Int32Array.from(hinges);
-
-    /** @private @const {!Float64Array} */
-    this._faceCounts = new Float64Array(numVertices);
-    faces.forEach((face, f) => {
-      if (this._reached[f]) face.forEach((v) => this._faceCounts[v]++);
-    });
     /** @private @const {!Float64Array} */
     this._transforms = new Float64Array(12 * faces.length);
     /** @private @const {!Float64Array} */
@@ -308,18 +672,28 @@ export class Folder {
      * @const {!Float32Array}
      */
     this.positions = new Float32Array(3 * numVertices);
+    /** @private {?Float32Array} */
+    this._baseBridgeDelta = null;
+    /** @private @const {!Object} */
+    this._inextBars = buildModelInextensibleBars(model);
 
     /**
      * Row-major 3x3 rotation from the frame of `positions` to the file's
      * folded frame, or null if the model has none.
-     * @const {?Array<number>}
+     * @type {?Array<number>}
      */
     this.pose = model.folded ? this._rootFaceRotation() : null;
-    /** @private @const {?Float32Array} */
+    /** @private {?Float32Array} */
     this._residual = this.pose ? this._residualToFoldedFrame() : null;
 
     /** @private {?Object} Multi-stage schedule object. */
     this._schedule = null;
+    /** @private {?Array<!Float32Array>} */
+    this._act1Keyframes = null;
+    /** @private {?Float32Array} */
+    this._vertS2Start = null;
+    /** @private {?Float32Array} */
+    this._vertS2End = null;
     /**
      * Latest evaluated schedule state (label, activePhaseIndex, activeEdges,
      * foldedEdges, diagramKey, strainPct).
@@ -329,17 +703,154 @@ export class Folder {
   }
 
   /**
-   * Attaches a multi-stage folding schedule.
+   * Attaches a multi-stage folding schedule, building `_collapseTree` and
+   * `_shapingTree` and assembling full Act-I XPBD keyframes when available.
    *
-   * @param {?Object} schedule Schedule built by `buildFoldingSchedule`.
+   * @param {?Object} schedule Schedule from `hydrateSchedule` or
+   *     `buildFoldingSchedule`.
    */
   setSchedule(schedule) {
     this._schedule = schedule;
+    const {flat, faces, edges, faceRegions} = this._model;
+    const nV = flat.length / 2;
+    const rf = schedule?.rootFace ?? nearestFaceToCenter(flat, faces);
+    this.rootFace = rf;
+
+    this._collapseTree = buildSpanningTree(this._model, rf);
+    this._shapingTree = schedule?.shapingHopCosts ?
+        buildShortHopDijkstra(this._model, rf, schedule.shapingHopCosts) :
+        this._collapseTree;
+
+    this._adoptTree(this._shapingTree);
+    this.pose = this._model.folded ? this._rootFaceRotation() : null;
+    this._residual = this.pose ? this._residualToFoldedFrame() : null;
+
+    const posS =
+        Float32Array.from(this._foldByHinges(this._model.baseFoldAngles));
+    if (schedule?.act1Keyframes?.length >= 2) {
+      this._act1Keyframes = schedule.act1Keyframes;
+    } else if (schedule?.act1InteriorKeyframes?.length >= 1) {
+      const flat0 = new Float32Array(3 * nV);
+      for (let v = 0; v < nV; v++) {
+        flat0[3 * v] = flat[2 * v];
+        flat0[3 * v + 1] = flat[2 * v + 1];
+        flat0[3 * v + 2] = 0;
+      }
+      this._act1Keyframes = schedule.includesBaseFrame ?
+          [flat0, ...schedule.act1InteriorKeyframes] :
+          [flat0, ...schedule.act1InteriorKeyframes, posS];
+    } else {
+      this._act1Keyframes = null;
+    }
+
+    let posC;
+    if (this._act1Keyframes) {
+      posC = this._act1Keyframes[this._act1Keyframes.length - 1];
+    } else {
+      this._adoptTree(this._collapseTree);
+      posC = Float32Array.from(this._foldByHinges(this._model.baseFoldAngles));
+      this._adoptTree(this._shapingTree);
+    }
+    const bridge = new Float32Array(posC.length);
+    let maxBridge = 0;
+    for (let i = 0; i < posC.length; i++) {
+      bridge[i] = posC[i] - posS[i];
+      if (Math.abs(bridge[i]) > maxBridge) maxBridge = Math.abs(bridge[i]);
+    }
+    this._baseBridgeDelta = maxBridge > 1e-6 ? bridge : null;
+
+    if (schedule?.phases) {
+      const t0 = schedule.shapingStartT ?? DEFAULT_SHAPING_START_T;
+      const vStart = new Float32Array(nV).fill(1.0);
+      const vEnd = new Float32Array(nV).fill(t0);
+      const nRegs = Math.max(1, this._model.regions.length);
+      const regStart = new Float32Array(nRegs).fill(1.0);
+      const regEnd = new Float32Array(nRegs).fill(t0);
+      const directS2 = new Uint8Array(nV);
+      const hasS2 = new Uint8Array(nV);
+      const regHasS2 = new Uint8Array(nRegs);
+
+      for (const ph of schedule.phases) {
+        if (ph.stageGroup !== 'shaping') continue;
+        for (const e of ph.edgeIndices) {
+          const [u, v] = edges[e];
+          if (ph.tStart < vStart[u]) vStart[u] = ph.tStart;
+          if (ph.tEnd > vEnd[u]) vEnd[u] = ph.tEnd;
+          if (ph.tStart < vStart[v]) vStart[v] = ph.tStart;
+          if (ph.tEnd > vEnd[v]) vEnd[v] = ph.tEnd;
+          directS2[u] = 1;
+          directS2[v] = 1;
+          hasS2[u] = 1;
+          hasS2[v] = 1;
+        }
+      }
+      faces.forEach((fc, fi) => {
+        const r = faceRegions[fi];
+        if (r == null || r < 0) return;
+        for (const v of fc) {
+          if (directS2[v]) {
+            if (vStart[v] < regStart[r]) regStart[r] = vStart[v];
+            if (vEnd[v] > regEnd[r]) regEnd[r] = vEnd[v];
+            regHasS2[r] = 1;
+          }
+        }
+      });
+      faces.forEach((fc, fi) => {
+        const r = faceRegions[fi];
+        if (r == null || r < 0 || !regHasS2[r]) return;
+        for (const v of fc) {
+          if (!directS2[v]) {
+            vStart[v] = Math.min(vStart[v], regStart[r]);
+            vEnd[v] = Math.max(vEnd[v], regEnd[r]);
+            hasS2[v] = 1;
+          }
+        }
+      });
+      for (let v = 0; v < nV; v++) {
+        if (!hasS2[v] || vEnd[v] <= vStart[v] + 1e-4) {
+          vStart[v] = t0;
+          vEnd[v] = 0.99;
+        }
+      }
+      this._vertS2Start = vStart;
+      this._vertS2End = vEnd;
+    } else {
+      this._vertS2Start = null;
+      this._vertS2End = null;
+    }
+  }
+
+  /**
+   * Adopts an explicit spanning tree (used internally and during schedule
+   * construction).
+   *
+   * @param {!Object} tree
+   */
+  adoptTree(tree) {
+    this._adoptTree(tree);
+  }
+
+  /**
+   * Direct hinge-rotation fold without Stage-2 residual blend.
+   *
+   * @param {!Float64Array} angles
+   * @return {!Float32Array}
+   */
+  foldByHingesRaw(angles) {
+    return this._foldByHinges(angles);
+  }
+
+  /** @private */
+  _adoptTree(tree) {
+    this.rootFace = tree.rootFace;
+    this._hinges = tree.hinges;
+    this._reached = tree.reached;
+    this._faceCounts = tree.faceCounts;
   }
 
   /**
    * Upright stand-up blend in `[0, 1]`: stays flat on the studio table (`0`)
-   * throughout Act I collapse and Act II flat-clipping, then rises smoothly.
+   * throughout Act I collapse and Act II narrowing, then rises smoothly.
    *
    * @param {number} progress From 0 (flat) to 1 (folded).
    * @param {boolean} staged Whether multi-stage folding is enabled.
@@ -350,9 +861,10 @@ export class Folder {
       return smootherstep(progress);
     }
     const {standupStartT = DEFAULT_STANDUP_START_T} = this._schedule;
-    if (standupStartT >= 1 - 1e-5 || progress <= standupStartT) return 0;
+    const t = warpScheduleProgress(this._schedule, progress);
+    if (standupStartT >= 1 - 1e-5 || t <= standupStartT) return 0;
     return smootherstep(
-        (progress - standupStartT) / Math.max(1e-5, 0.48 * (1 - standupStartT)));
+        (t - standupStartT) / Math.max(1e-5, 0.48 * (1 - standupStartT)));
   }
 
   /**
@@ -371,11 +883,68 @@ export class Folder {
         evaluateScheduleAt(
             this._schedule, foldAngles.length, p, this._angles) :
         null;
+    const t = evalInfo ? evalInfo.warpedT : p;
 
-    let residualWeight = p;
+    const baseT = this._schedule?.baseCompleteT ?? DEFAULT_BASE_COMPLETE_T;
+    const shapeT = this._schedule?.shapingStartT ?? DEFAULT_SHAPING_START_T;
+
+    if (useSchedule && this._act1Keyframes?.length >= 2 && t <= baseT) {
+      const kfs = this._act1Keyframes;
+      const nK = kfs.length;
+      const u = baseT > 1e-6 ? Math.max(0, Math.min(1, t / baseT)) : 1;
+      const positions = this.positions;
+      if (u <= 1e-5) {
+        positions.set(kfs[0]);
+      } else if (u >= 1 - 1e-5) {
+        positions.set(kfs[nK - 1]);
+      } else {
+        const x = u * (nK - 1);
+        const idx = Math.min(nK - 2, Math.floor(x));
+        const frac = x - idx;
+        const kfA = kfs[idx];
+        const kfB = kfs[idx + 1];
+        for (let i = 0; i < positions.length; i++) {
+          positions[i] = (1 - frac) * kfA[i] + frac * kfB[i];
+        }
+        // Continuous C0 mid-keyframe bar-inextensibility ramp (`0` at keyframe
+        // endpoints `frac in {0, 1}` and smoothly fading out over `[0.64, 0.86]`).
+        const uFade = 1 - smootherstep((u - 0.64) / 0.22);
+        const wBar = 4 * frac * (1 - frac) * uFade;
+        if (wBar > 1e-5) {
+          const {pairs, lens} = this._inextBars;
+          const nB = lens.length;
+          const gain = 0.46 * wBar;
+          for (let sw = 0; sw < 3; sw++) {
+            for (let b = 0; b < nB; b++) {
+              const i0 = 3 * pairs[2 * b];
+              const i1 = 3 * pairs[2 * b + 1];
+              const dx = positions[i1] - positions[i0];
+              const dy = positions[i1 + 1] - positions[i0 + 1];
+              const dz = positions[i1 + 2] - positions[i0 + 2];
+              const d = Math.hypot(dx, dy, dz) || 1e-9;
+              const c = gain * (d - lens[b]) / d;
+              positions[i0] += c * dx;
+              positions[i0 + 1] += c * dy;
+              positions[i0 + 2] += c * dz;
+              positions[i1] -= c * dx;
+              positions[i1 + 1] -= c * dy;
+              positions[i1 + 2] -= c * dz;
+            }
+          }
+        }
+      }
+      this.lastState = evalInfo ?
+          {...evalInfo, strainPct: strainPercent(this._model, positions) ?? 0} :
+          null;
+      return positions;
+    }
+
+    let residualWeight = t;
     if (useSchedule) {
       residualWeight = smootherstep(evalInfo.stage2Progress);
+      this._adoptTree(t <= baseT ? this._collapseTree : this._shapingTree);
     } else {
+      this._adoptTree(this._shapingTree);
       const split = staged && shaping !== null;
       const base = split ? Math.min(1, 2 * p) : p;
       const late = split ? Math.max(0, 2 * p - 1) : p;
@@ -387,9 +956,34 @@ export class Folder {
     }
 
     const positions = this._foldByHinges(this._angles);
-    if (this._residual && residualWeight > 0) {
+
+    if (useSchedule && this._baseBridgeDelta && t > baseT && t < shapeT) {
+      const fade =
+          1 - smootherstep((t - baseT) / Math.max(1e-5, shapeT - baseT));
       for (let i = 0; i < positions.length; i++) {
-        positions[i] += residualWeight * this._residual[i];
+        positions[i] += fade * this._baseBridgeDelta[i];
+      }
+    }
+
+    if (this._residual && residualWeight > 0) {
+      if (useSchedule && this._vertS2Start && this._vertS2End) {
+        const vs = this._vertS2Start;
+        const ve = this._vertS2End;
+        const nV = vs.length;
+        for (let v = 0; v < nV; v++) {
+          if (t <= vs[v]) continue;
+          const u =
+              t >= ve[v] ? 1 : (t - vs[v]) / Math.max(1e-4, ve[v] - vs[v]);
+          const w = smootherstep(u);
+          const b = 3 * v;
+          positions[b] += w * this._residual[b];
+          positions[b + 1] += w * this._residual[b + 1];
+          positions[b + 2] += w * this._residual[b + 2];
+        }
+      } else {
+        for (let i = 0; i < positions.length; i++) {
+          positions[i] += residualWeight * this._residual[i];
+        }
       }
     }
     this.lastState = evalInfo ?
@@ -411,7 +1005,7 @@ export class Folder {
   }
 
   /**
-   * Folds every crease to the given angle.
+   * Folds every crease to the given angle along the active spanning tree.
    *
    * @private
    * @param {!Float64Array} angles Fold angle in degrees per edge.
@@ -441,6 +1035,10 @@ export class Folder {
       let dy = m[p + 4] * flat[to] + m[p + 5] * flat[to + 1] + m[p + 7] - ay;
       let dz = m[p + 8] * flat[to] + m[p + 9] * flat[to + 1] + m[p + 11] - az;
       const length = Math.hypot(dx, dy, dz);
+      if (length <= 1e-12) {
+        m.copyWithin(c, p, p + 12);
+        continue;
+      }
       dx /= length;
       dy /= length;
       dz /= length;
@@ -575,6 +1173,44 @@ export class Folder {
 }
 
 /**
+ * Builds unique edge + polygon-diagonal inextensibility bars for mid-keyframe
+ * open-pleat interpolation polish.
+ *
+ * @param {!Model} model
+ * @return {{pairs: !Int32Array, lens: !Float64Array}}
+ */
+function buildModelInextensibleBars(model) {
+  const {flat, faces, edges} = model;
+  const nV = flat.length / 2;
+  const seen = new Set();
+  const pairs = [];
+  const lens = [];
+  const addBar = (u, v) => {
+    if (u === v) return;
+    const k = u < v ? u * nV + v : v * nV + u;
+    if (seen.has(k)) return;
+    const len =
+        Math.hypot(flat[2 * u] - flat[2 * v], flat[2 * u + 1] - flat[2 * v + 1]);
+    if (len <= 1e-8) return;
+    seen.add(k);
+    pairs.push(u, v);
+    lens.push(len);
+  };
+  for (const [u, v] of edges) addBar(u, v);
+  for (const fc of faces) {
+    for (const [a, b, c] of earClipFace(fc, flat)) {
+      addBar(a, b);
+      addBar(b, c);
+      addBar(c, a);
+    }
+  }
+  return {
+    pairs: Int32Array.from(pairs),
+    lens: Float64Array.from(lens),
+  };
+}
+
+/**
  * Key identifying the undirected edge between two vertices.
  *
  * @param {number} u First vertex index.
@@ -604,7 +1240,7 @@ function normalize(vector) {
  * @param {!Array<!Array<number>>} faces Vertex indices per face.
  * @return {number}
  */
-function nearestFaceToCenter(flat, faces) {
+export function nearestFaceToCenter(flat, faces) {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;

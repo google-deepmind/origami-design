@@ -21,7 +21,7 @@
  * `alpha: true`), and encodes an MP4 (H.264, when supported) or VP9 WebM video.
  */
 
-import {DEFAULT_BASE_COMPLETE_T, DEFAULT_SHAPING_START_T, DEFAULT_STANDUP_START_T, smootherstep, unwarpFoldingTime, warpFoldingTime} from './schedule.js';
+import {DEFAULT_BASE_COMPLETE_T, DEFAULT_SHAPING_START_T, DEFAULT_STANDUP_START_T, smootherstep, unwarpFoldingTime, warpFoldingTime, warpScheduleProgress} from './schedule.js';
 
 /** Output video dimensions (16:9 Full HD) and target frame rate. */
 const VIDEO_WIDTH = 1920;
@@ -101,6 +101,7 @@ export function pickSupportedVideoFormat() {
  *   baseCompleteT: number,
  *   shapingStartT: number,
  *   standupStartT: number,
+ *   s2TimeMap: (?Float64Array|?Array<number>|undefined),
  *   heroAzimuth: number,
  *   heroElevation: number,
  *   initialFold: number,
@@ -121,6 +122,7 @@ export function evaluateVideoTimeline(presetId, elapsedSec, cfg) {
     baseCompleteT,
     shapingStartT,
     standupStartT,
+    s2TimeMap = null,
     heroAzimuth,
     heroElevation,
     initialFold,
@@ -197,14 +199,17 @@ export function evaluateVideoTimeline(presetId, elapsedSec, cfg) {
     const tableElev = Math.max(46, heroElevation + 24);
     const midBaseElev = Math.max(28, heroElevation + 10);
     const pivotT = Math.max(shapingStartT, standupStartT || shapingStartT);
-    if (fold <= pivotT) {
-      const e1 = smootherstep(fold / Math.max(pivotT, 1e-4));
+    const warpedFold = (staged && s2TimeMap) ?
+        warpScheduleProgress({baseCompleteT, shapingStartT, s2TimeMap}, fold) :
+        fold;
+    if (warpedFold <= pivotT) {
+      const e1 = smootherstep(warpedFold / Math.max(pivotT, 1e-4));
       azimuth = (heroAzimuth - 18) * (1 - e1) + (heroAzimuth - 6) * e1;
       elevation = tableElev * (1 - e1) + midBaseElev * e1;
     } else if (t < t4) {
       const settleEnd = Math.min(0.96, pivotT + 0.65 * (1 - pivotT));
       const e2 = smootherstep(
-          (fold - pivotT) / Math.max(settleEnd - pivotT, 1e-4));
+          (warpedFold - pivotT) / Math.max(settleEnd - pivotT, 1e-4));
       azimuth = (heroAzimuth - 6) * (1 - e2) + heroAzimuth * e2;
       elevation = midBaseElev * (1 - e2) + heroElevation * e2;
     }
@@ -313,18 +318,19 @@ function compositeVideoFrame(ctx, webglCanvas, hud) {
   } else if (schedule && lastState) {
     const idx = lastState.activePhaseIndex ?? -1;
     const ph = idx >= 0 ? schedule.phases[idx] : null;
+    const warpedFold = lastState.warpedT ?? step.fold;
     if (ph?.act) {
       badgeKey = ph.act;
       badgeText = `Act ${ph.act}`;
-    } else if (step.fold <= 0.002) {
+    } else if (warpedFold <= 0.002) {
       badgeKey = 'I';
       badgeText = 'Flat';
     } else if (
         schedule.baseCompleteT < 0.95 &&
-        Math.abs(step.fold - schedule.baseCompleteT) <= 0.015) {
+        Math.abs(warpedFold - schedule.baseCompleteT) <= 0.015) {
       badgeKey = 'I';
       badgeText = 'Base';
-    } else if (step.fold >= 0.998) {
+    } else if (warpedFold >= 0.998) {
       badgeKey = 'IV';
       badgeText = '3D';
     }
@@ -463,6 +469,7 @@ export async function recordFoldingVideo(options) {
     baseCompleteT: schedule?.baseCompleteT ?? DEFAULT_BASE_COMPLETE_T,
     shapingStartT: schedule?.shapingStartT ?? DEFAULT_SHAPING_START_T,
     standupStartT: schedule?.standupStartT ?? DEFAULT_STANDUP_START_T,
+    s2TimeMap: schedule?.s2TimeMap ?? null,
     heroAzimuth: hero.azimuth,
     heroElevation: hero.elevation,
     initialFold,
