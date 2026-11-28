@@ -94,7 +94,9 @@ class ShowcaseTest(parameterized.TestCase):
     self.assertIn('id="video-preset"', page)
     self.assertIn('<input id="creases" type="checkbox">', page)
 
-    for script in (_DOCS_DIR / 'js').glob('*.js'):
+    for script in list((_DOCS_DIR / 'js').glob('*.js')) + list(
+        (_DOCS_DIR / 'js').glob('*.mjs')
+    ):
       source = script.read_text(encoding='utf-8')
       for module in re.findall(r"from '(\./[^']+)'", source):
         self.assertTrue((script.parent / module).is_file(), module)
@@ -241,7 +243,9 @@ class ShowcaseTest(parameterized.TestCase):
 
     tmp = pathlib.Path(self.create_tempdir().full_path)
     (tmp / 'package.json').write_text('{"type": "module"}\n', encoding='utf-8')
-    for js_file in (_DOCS_DIR / 'js').glob('*.js'):
+    for js_file in list((_DOCS_DIR / 'js').glob('*.js')) + list(
+        (_DOCS_DIR / 'js').glob('*.mjs')
+    ):
       shutil.copy2(js_file, tmp / js_file.name)
     script_path = tmp / script_name
     script_path.write_text(script_body, encoding='utf-8')
@@ -481,6 +485,59 @@ class ShowcaseTest(parameterized.TestCase):
             folder.lastState.strainPct < maxBaseStrain,
             `${{entry.slug}} base strain=${{folder.lastState.strainPct}}%`);
       }}
+      """,
+    )
+
+  def test_scorecard_and_trajectory_optimizer_under_node(self):
+    models_dir_str = str(_MODELS_DIR.resolve())
+    self._run_node_script(
+        'verify_scorecard_and_optimizer.mjs',
+        f"""
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import assert from 'node:assert/strict';
+      import {{
+        optimizeModelTrajectory,
+        scoreModelTrajectory,
+      }} from './optimize_trajectory.mjs';
+
+      const modelsDir = {json.dumps(models_dir_str)};
+      const catalog = JSON.parse(
+          fs.readFileSync(path.join(modelsDir, 'catalog.json'), 'utf8'));
+      for (const entry of catalog) {{
+        const dir = path.join(modelsDir, entry.slug);
+        const foldJson = JSON.parse(
+            fs.readFileSync(path.join(dir, 'shaped_3d.fold'), 'utf8'));
+        const sfJson = JSON.parse(
+            fs.readFileSync(path.join(dir, 'stick_figure.json'), 'utf8'));
+        const rawSched = JSON.parse(
+            fs.readFileSync(path.join(dir, 'schedule.json'), 'utf8'));
+        const res = scoreModelTrajectory(foldJson, sfJson, rawSched, 19);
+        assert.equal(res.scheduleSource, 'schedule.json');
+        assert.equal(res.act1.summary.baseMaekawaViol, 0);
+        assert.equal(res.act1.summary.maxP95SeamGapG, 0);
+        assert(
+            res.act1.summary.maxSurfAreaDevPct < 9.5,
+            `${{entry.slug}} Act I area=${{res.act1.summary.maxSurfAreaDevPct}}%`);
+        assert(
+            res.act1.score100 >= 58,
+            `${{entry.slug}} Act I score=${{res.act1.score100}}`);
+        assert(
+            res.stage2.score100 >= 65,
+            `${{entry.slug}} Stage 2 score=${{res.stage2.score100}}`);
+      }}
+
+      const eagleDir = path.join(modelsDir, 'golden-eagle');
+      const eagleFold = JSON.parse(
+          fs.readFileSync(path.join(eagleDir, 'shaped_3d.fold'), 'utf8'));
+      const eagleSf = JSON.parse(
+          fs.readFileSync(path.join(eagleDir, 'stick_figure.json'), 'utf8'));
+      const opt = optimizeModelTrajectory(eagleFold, eagleSf, {{fast: true}});
+      assert.equal(typeof opt.scheduleJson.act1DeltaQ, 'string');
+      assert.equal(typeof opt.scheduleJson.meshHash, 'string');
+      assert.equal(opt.scheduleJson.act1Bounds.length, 6);
+      assert(opt.act1.score100 >= 70, `opt Act I=${{opt.act1.score100}}`);
+      assert(opt.stage2.score100 >= 70, `opt Stage 2=${{opt.stage2.score100}}`);
       """,
     )
 

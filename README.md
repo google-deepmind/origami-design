@@ -269,13 +269,13 @@ for candidate in bp.solve(packed):
 
 ### 4. Bundled Agent Design Skills
 
-Five portable AI agent skills and an end-to-end designer agent definition are
+Six portable AI agent skills and an end-to-end designer agent definition are
 bundled under `.agents/` for automatic discovery in coding-agent harnesses when
 working inside a repository checkout:
 
 -   [`.agents/agents/origami-designer.md`](.agents/agents/origami-designer.md):
-    End-to-end workflow orchestrating design, solving, posing, actuation, and
-    critique.
+    End-to-end workflow orchestrating design, solving, posing, actuation,
+    critique, and Studio trajectory optimization.
 -   [`.agents/skills/stick-figure-design/SKILL.md`](.agents/skills/stick-figure-design/SKILL.md):
     Canonical workflow, schema, archetypes, and `bp-pipeline` CLI
     validation/rendering loop for authoring 3D `StickFigure` JSONs.
@@ -292,6 +292,11 @@ working inside a repository checkout:
 -   [`.agents/skills/origami-critique/SKILL.md`](.agents/skills/origami-critique/SKILL.md):
     Quantitative 0–10 fidelity rubric (`bp.evaluate_fidelity`), hard fold/pose
     gates, and visual turnaround defect remedies.
+-   [`.agents/skills/origami-trajectory-optimization/SKILL.md`](.agents/skills/origami-trajectory-optimization/SKILL.md):
+    8-metric physicality scorecard (`docs/js/scorecard.js`), layer-aware
+    self-intersection checks (`docs/js/intersections.js`), and deterministic
+    two-stage trajectory optimization (`docs/js/optimize_trajectory.mjs`) for
+    COrigami Studio `schedule.json` bundles.
 
 ## Evaluation on Large Stick-Figure Benchmarks
 

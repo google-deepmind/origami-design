@@ -29,6 +29,11 @@ Consult the matching skill under `.agents/skills/` for each design phase:
 5. `origami-critique`: Score folded models with `bp.evaluate_fidelity`, inspect
    `shaped_3d_views.png` turnarounds, check `clean_gate` and `pose_gate`, and
    map geometric defects directly to corrective shaping or tree edits.
+6. `origami-trajectory-optimization`: Score and optimize continuous two-stage
+   folding trajectories (`M1..M8` physicality scorecard, signed-dihedral XPBD
+   Act-I collapse, Short-Hop Radial Dijkstra Stage-2 shaping, and
+   `schedule.json` generation via `docs/js/optimize_trajectory.mjs`) when
+   preparing showcase models for COrigami Studio.
 
 ## Iterative Design Loop
 

@@ -50,6 +50,11 @@ class StickFigureSkillTest(parameterized.TestCase):
       ('origami-shaping', 'origami-shaping', True),
       ('origami-solving-pipeline', 'origami-solving-pipeline', True),
       ('origami-critique', 'origami-critique', True),
+      (
+          'origami-trajectory-optimization',
+          'origami-trajectory-optimization',
+          False,
+      ),
   )
   def test_llm_skills_frontmatter_and_python_snippets(
       self,
@@ -384,9 +389,18 @@ class StickFigureSkillTest(parameterized.TestCase):
         'origami-solving-pipeline',
         'origami-shaping',
         'origami-critique',
+        'origami-trajectory-optimization',
     ):
       self.assertIn(skill_ref, agent_text)
       self.assertTrue((_SKILLS_DIR / skill_ref / 'SKILL.md').exists())
+
+    traj_ref = (
+        _SKILLS_DIR
+        / 'origami-trajectory-optimization'
+        / 'references'
+        / 'metrics_and_schema.md'
+    )
+    self.assertTrue(traj_ref.exists())
 
     refs_dir = _SKILLS_DIR / 'origami-shaping' / 'references'
     tools_md = (refs_dir / 'tools.md').read_text(encoding='utf-8')
